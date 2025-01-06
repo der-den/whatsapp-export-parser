@@ -13,6 +13,7 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 import sys
 import os
+import json
 
 from models import ChatMessage, ContentType
 from utils import format_size, debug_print
@@ -241,7 +242,20 @@ class PDFGenerator:
         # Format timestamp, sender and content
         timestamp_text = message.timestamp.strftime("%Y-%m-%d %H:%M")
         safe_sender = self._escape_text(message.sender)
-        safe_content = self._format_text(content)
+        safe_content = message.content
+        if message.is_attachment:
+            # For attachments, only show the formatted line when no_attachments is true
+            try:
+                metadata = json.loads(message.content)
+                if metadata.get('type') == 'image':
+                    filename = metadata.get('filename', message.attachment_file)
+                    size_kb = metadata.get('size_bytes', 0) / 1024  # Convert to KB
+                    attachment_num = metadata.get('attachment_number', 0)
+                    safe_content = f"Image attachment: {filename} ({size_kb:.1f} KB) #{attachment_num}"
+            except:
+                pass
+        safe_content = self._escape_text(safe_content)
+        safe_content = self._format_text(safe_content)
         
         # Create paragraphs for each component
         timestamp_style = self.styles['TimestampOwner'] if is_owner else self.styles['TimestampOther']
@@ -296,29 +310,72 @@ class PDFGenerator:
         # Handle attachments
         if message.is_attachment and message.exists_in_export:
             debug_print(f"Loading attachment: {message.attachment_file}")
-            if not self.no_attachments:
-                try:
-                    # Remove invisible characters from filename before processing
-                    clean_filename = ''.join(c for c in message.attachment_file if c.isprintable()).strip()
-                    full_path = self._get_full_path(clean_filename)
-                    
-                    if full_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        # Handle images
+            
+            # Parse JSON metadata from content
+            try:
+                metadata = json.loads(message.content)
+                filename = metadata.get('filename', message.attachment_file)
+                size_kb = metadata.get('size_bytes', 0) / 1024  # Convert to KB
+                attachment_num = metadata.get('attachment_number', 0)
+                
+                if metadata.get('type') == 'image':
+                    # Create a table for the image and its metadata
+                    if not self.no_attachments:
                         try:
-                            max_width = 400  # Maximum width for images
-                            max_height = 400  # Maximum height for images
-                            scaled_width, scaled_height = self._scale_image(full_path, max_width, max_height)
+                            # Remove invisible characters from filename before processing
+                            clean_filename = ''.join(c for c in filename if c.isprintable()).strip()
+                            full_path = self._get_full_path(clean_filename)
                             
-                            img = Image(full_path, width=scaled_width, height=scaled_height)
-                            elements.append(img)
+                            if full_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                                # Create a table with two columns - image on left, metadata on right
+                                max_width = 400
+                                max_height = 400
+                                scaled_width, scaled_height = self._scale_image(full_path, max_width, max_height)
+                                
+                                img = Image(full_path, width=scaled_width, height=scaled_height)
+                                
+                                # Format metadata text
+                                meta_text = [
+                                    f"Filename: {filename}",
+                                    f"Size: {size_kb:.1f} KB",
+                                    f"{metadata.get('width', 'N/A')}x{metadata.get('height', 'N/A')}px",
+                                    f"Format: {metadata.get('format', 'N/A')}",
+                                    f"MD5: {metadata.get('md5_hash', 'N/A')}",
+                                    f"Sender:\n {message.sender}\n",
+                                    f"Attachment count: {attachment_num}"
+                                    
+                                ]
+                                meta_para = Paragraph('<br/>'.join(meta_text), self.styles['Normal'])
+                                
+                                # Create table with image and metadata
+                                table = Table(
+                                    [[img, meta_para]],
+                                    colWidths=[scaled_width, A4[0] - scaled_width - 72],  # 72 points margin
+                                    style=TableStyle([
+                                        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                                        ('LEFTPADDING', (0,0), (0,0), 0),  # No padding for image cell
+                                        ('RIGHTPADDING', (0,0), (0,0), 0),  # No padding for image cell
+                                        ('TOPPADDING', (0,0), (0,0), 0),    # No padding for image cell
+                                        ('BOTTOMPADDING', (0,0), (0,0), 0), # No padding for image cell
+                                        ('LEFTPADDING', (1,0), (1,0), 20),  # Extra padding for metadata
+                                        ('RIGHTPADDING', (1,0), (1,0), 6),  # Normal padding for metadata
+                                        ('GRID', (0,0), (0,0), 1, colors.black),  # 1-point border around image cell
+                                    ])
+                                )
+                                elements.append(table)
+                                # Add space after the image
+                                elements.append(Spacer(1, 15))  # 15 points of vertical space
                         except Exception as e:
                             print(f"Error processing image: {str(e)}", file=sys.stderr)
                             error_text = f"[Error loading image: {str(e)}]"
                             elements.append(Paragraph(error_text, self.styles['Normal']))
-                except Exception as e:
-                    print(f"Error adding attachment to PDF: {str(e)}", file=sys.stderr)
-                    error_text = f"[Error loading attachment: {str(e)}]"
-                    elements.append(Paragraph(error_text, self.styles['Normal']))
+            except json.JSONDecodeError:
+                print(f"Error parsing JSON metadata from content: {message.content}", file=sys.stderr)
+                elements.append(Paragraph(f"[Error parsing attachment metadata]", self.styles['Normal']))
+            except Exception as e:
+                print(f"Error adding attachment to PDF: {str(e)}", file=sys.stderr)
+                error_text = f"[Error loading attachment: {str(e)}]"
+                elements.append(Paragraph(error_text, self.styles['Normal']))
         
         return elements
 
