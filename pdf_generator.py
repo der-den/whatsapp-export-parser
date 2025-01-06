@@ -315,17 +315,10 @@ class PDFGenerator:
                             print(f"Error processing image: {str(e)}", file=sys.stderr)
                             error_text = f"[Error loading image: {str(e)}]"
                             elements.append(Paragraph(error_text, self.styles['Normal']))
-                    else:
-                        # For non-image attachments, just show a placeholder
-                        elements.append(Paragraph(f"[Attachment: {clean_filename}]", self.styles['Normal']))
                 except Exception as e:
                     print(f"Error adding attachment to PDF: {str(e)}", file=sys.stderr)
                     error_text = f"[Error loading attachment: {str(e)}]"
                     elements.append(Paragraph(error_text, self.styles['Normal']))
-            else:
-                # Just show the attachment name when no_attachments is True
-                clean_filename = ''.join(c for c in message.attachment_file if c.isprintable()).strip()
-                elements.append(Paragraph(f"[Attachment: {clean_filename}]", self.styles['Normal']))
         
         return elements
 
