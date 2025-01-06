@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Export Parser Documentation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .function {
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .code {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #f1f1f1;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .important {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .warning {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .tip {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .nav {
+            background-color: #f8f9fa;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .nav ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .nav ul li {
+            display: inline;
+            margin-right: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <h2>Quick Navigation</h2>
+        <ul>
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#installation">Installation</a></li>
+            <li><a href="#usage">Usage</a></li>
+            <li><a href="#classes">Classes</a></li>
+            <li><a href="#functions">Functions</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#troubleshooting">Troubleshooting</a></li>
+        </ul>
+    </div>
+
+    <h1 id="overview">WhatsApp Export Parser Documentation</h1>
+    
+    <div class="important">
+        <h3>Overview</h3>
+        <p>This Python script parses WhatsApp chat export ZIP files and generates a PDF document containing the chat history, including messages, images, and metadata. It handles Unicode text, emojis, and various types of attachments.</p>
+        
+        <h4>Key Features:</h4>
+        <ul>
+            <li>Parse WhatsApp chat export ZIP files</li>
+            <li>Generate beautifully formatted PDF documents</li>
+            <li>Support for images, emojis, and Unicode text</li>
+            <li>Metadata tables for media files</li>
+            <li>Chat statistics and analytics</li>
+            <li>Configurable message alignment based on sender</li>
+            <li>Debug mode for troubleshooting</li>
+        </ul>
+    </div>
+
+    <h2 id="installation">Installation</h2>
+    
+    <div class="function">
+        <h3>Requirements</h3>
+        <p>The following Python packages are required:</p>
+        <pre>
+reportlab>=3.6.8
+Pillow>=9.0.0
+emoji>=1.6.3</pre>
+        
+        <h3>System Requirements</h3>
+        <ul>
+            <li>Python 3.7 or higher</li>
+            <li>Noto Sans font (recommended)</li>
+            <li>At least 512MB RAM for processing large chats</li>
+            <li>Sufficient disk space for extracted media files</li>
+        </ul>
+    </div>
+
+    <h2 id="usage">Usage Guide</h2>
+
+    <div class="function">
+        <h3>Basic Usage</h3>
+        <pre>
+python whatsapp_export_parser.py chat_export.zip --device-owner "John Doe"</pre>
+        
+        <h3>Advanced Options</h3>
+        <table>
+            <tr>
+                <th>Option</th>
+                <th>Description</th>
+                <th>Example</th>
+            </tr>
+            <tr>
+                <td>--debug</td>
+                <td>Enable debug output</td>
+                <td><span class="code">--debug</span></td>
+            </tr>
+            <tr>
+                <td>--device-owner</td>
+                <td>Set device owner for message alignment</td>
+                <td><span class="code">--device-owner "John Doe"</span></td>
+            </tr>
+        </table>
+    </div>
+
+    <h2 id="classes">Core Classes</h2>
+
+    <div class="function">
+        <h3>ChatMessage Class</h3>
+        <p>Represents a single chat message with properties:</p>
+        <pre>
+class ChatMessage:
+    def __init__(self):
+        self.timestamp = None      # Message datetime
+        self.sender = ""          # Sender's name
+        self.content = ""         # Message content
+        self.is_attachment = False  # Is this an attachment?
+        self.attachment_file = None  # Path to attachment
+        self.exists_in_export = False  # Does attachment exist?</pre>
+        
+        <h4>Usage Example:</h4>
+        <pre>
+message = ChatMessage()
+message.timestamp = datetime.now()
+message.sender = "John"
+message.content = "Hello, World!"</pre>
+    </div>
+
+    <div class="function">
+        <h3>WhatsAppExportParser Class</h3>
+        <p>Main parser class with comprehensive functionality:</p>
+
+        <h4>Class Variables:</h4>
+        <ul>
+            <li><span class="code">DEBUG</span>: Enable/disable debug output</li>
+            <li><span class="code">TIME_PATTERN</span>: Regex for timestamp parsing</li>
+            <li><span class="code">MESSAGE_PATTERN</span>: Regex for message parsing</li>
+        </ul>
+
+        <h4>Instance Variables:</h4>
+        <ul>
+            <li><span class="code">zip_file_path</span>: Path to WhatsApp export ZIP</li>
+            <li><span class="code">device_owner</span>: Name of device owner</li>
+            <li><span class="code">chat_messages</span>: List of parsed messages</li>
+            <li><span class="code">media_files</span>: List of media attachments</li>
+            <li><span class="code">extract_path</span>: Path to extracted files</li>
+            <li><span class="code">chat_members</span>: Set of unique chat participants</li>
+        </ul>
+    </div>
+
+    <h2 id="functions">Key Functions</h2>
+
+    <div class="function">
+        <h3>Core Utility Functions</h3>
+        
+        <h4>calculate_md5()</h4>
+        <p>Calculates the MD5 hash of the ZIP file for integrity verification:</p>
+        <pre>
+def calculate_md5(self):
+    """
+    Calculate MD5 hash of the ZIP file
+    
+    This function reads the ZIP file in chunks to efficiently handle large files
+    without loading the entire file into memory. This is particularly important
+    for large chat exports with media files.
+    
+    Returns:
+        str: MD5 hash hexadecimal string or 'N/A' if calculation fails
+    
+    Example:
+        parser = WhatsAppExportParser('chat.zip')
+        md5 = parser.calculate_md5()
+        print(f"ZIP file MD5: {md5}")
+    """
+    try:
+        md5_hash = hashlib.md5()
+        with open(self.zip_file_path, "rb") as f:
+            # Read the file in chunks to handle large files
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+        return md5_hash.hexdigest()
+    except Exception as e:
+        debug_print(f"Error calculating MD5: {str(e)}")
+        return "N/A"</pre>
+
+        <h4>calculate_file_md5(file_path)</h4>
+        <p>Calculates MD5 hash for individual files within the export:</p>
+        <pre>
+def calculate_file_md5(self, file_path):
+    """
+    Calculate MD5 hash of a specific file
+    
+    This function is used to verify individual file integrity and detect
+    duplicate files in the export. It uses the same chunked reading approach
+    as calculate_md5() for memory efficiency.
+    
+    Args:
+        file_path (str): Path to the file to hash
+        
+    Returns:
+        str: MD5 hash hexadecimal string
+        
+    Example:
+        md5 = parser.calculate_file_md5('image.jpg')
+        print(f"Image MD5: {md5}")
+    """
+    try:
+        md5_hash = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+        return md5_hash.hexdigest()
+    except Exception as e:
+        debug_print(f"Error calculating file MD5: {str(e)}")
+        return "N/A"</pre>
+
+        <h4>format_size(size_bytes)</h4>
+        <p>Formats file sizes in human-readable format:</p>
+        <pre>
+def format_size(self, size_bytes):
+    """
+    Format file size in human-readable format
+    
+    Converts raw byte sizes into appropriate units (B, KB, MB, GB)
+    with proper rounding and unit suffixes.
+    
+    Args:
+        size_bytes (int): Size in bytes
+        
+    Returns:
+        str: Formatted size string (e.g., "1.5 MB")
+        
+    Example:
+        size = parser.format_size(1234567)
+        print(f"File size: {size}")  # Output: "1.2 MB"
+    """
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"</pre>
+
+        <h4>find_font(font_name)</h4>
+        <p>Searches for font files in common system locations:</p>
+        <pre>
+def find_font(self, font_name):
+    """
+    Find a font file in common system locations
+    
+    This function searches for font files across various standard system
+    directories where fonts are typically installed. It supports different
+    operating systems and user-specific font locations.
+    
+    The search is case-insensitive and handles various font file naming
+    conventions. It specifically looks for regular (non-bold, non-italic)
+    font variants.
+    
+    Args:
+        font_name (str): Name of the font to find (e.g., 'NotoSans')
+        
+    Returns:
+        str or None: Full path to the font file if found, None otherwise
+        
+    Example:
+        font_path = parser.find_font('NotoSans')
+        if font_path:
+            print(f"Found font at: {font_path}")
+    """
+    common_paths = [
+        '/usr/share/fonts/noto',      # Arch Linux
+        '/usr/share/fonts/TTF',       # Some Linux
+        '/usr/local/share/fonts',     # Unix-like
+        '/usr/share/fonts/truetype',  # Debian/Ubuntu
+        '/usr/share/fonts/truetype/noto',  # Ubuntu Noto location
+        '/usr/share/fonts/dejavu',    # DejaVu location
+        os.path.expanduser('~/.fonts'),  # User fonts
+        os.path.expanduser('~/.local/share/fonts')  # User fonts
+    ]
+    
+    debug_print(f"Searching for font: {font_name}")
+    for path in common_paths:
+        if os.path.exists(path):
+            files = os.listdir(path)
+            for file in files:
+                # More flexible matching for font names
+                file_lower = file.lower()
+                if (font_name.lower() in file_lower and 
+                    file_lower.endswith('.ttf') and
+                    not file_lower.endswith('bold.ttf') and
+                    not file_lower.endswith('italic.ttf')):
+                    full_path = os.path.join(path, file)
+                    debug_print(f"Found matching font: {full_path}")
+                    return full_path
+    debug_print(f"Font not found: {font_name}")
+    return None</pre>
+    </div>
+
+    <div class="function">
+        <h3>Message Parsing Functions</h3>
+        
+        <h4>parse_message_line(line)</h4>
+        <p>Parses a single line from the chat file into a structured message:</p>
+        <pre>
+def parse_message_line(self, line):
+    """
+    Parse a single line from the chat file
+    
+    This function takes a line from the chat file and attempts to parse it
+    into a structured ChatMessage object. It handles various message formats
+    including:
+    - Regular text messages
+    - System messages
+    - Messages with emojis
+    - Messages with attachments
+    
+    The function uses regex patterns to extract timestamp, sender, and content
+    information. It also handles special characters and formatting.
+    
+    Args:
+        line (str): A line from the chat file
+        
+    Returns:
+        ChatMessage or None: Parsed message object if successful, None otherwise
+        
+    Example:
+        message = parser.parse_message_line("[23.12.23, 3:45:12 PM] John: Hello!")
+        if message:
+            print(f"Sender: {message.sender}")
+            print(f"Content: {message.content}")
+    """
+    match = re.match(self.MESSAGE_PATTERN, line.strip())
+    if match:
+        date, time, sender, content = match.groups()
+        message = ChatMessage()
+        message.timestamp = self.parse_timestamp(date, time)
+        message.sender = sender.strip()
+        message.content = content.strip()
+        
+        # Check if this is an attachment message
+        if self.is_attachment_message(content):
+            message.is_attachment = True
+            message.attachment_file = self.extract_attachment_name(content)
+            
+        return message
+    return None</pre>
+
+        <h4>parse_timestamp(date_str, time_str)</h4>
+        <p>Converts WhatsApp timestamp format to datetime object:</p>
+        <pre>
+def parse_timestamp(self, date_str, time_str):
+    """
+    Parse WhatsApp timestamp format
+    
+    This function converts WhatsApp's timestamp format into a Python datetime
+    object. It handles both 12-hour and 24-hour time formats and accounts
+    for various regional date formats.
+    
+    The function performs extensive validation and normalization to ensure
+    accurate timestamp parsing, even with inconsistent input formats.
+    
+    Args:
+        date_str (str): Date string in format "DD.MM.YY"
+        time_str (str): Time string in format "HH:MM:SS AM/PM"
+        
+    Returns:
+        datetime or None: Parsed datetime object if successful, None otherwise
+        
+    Example:
+        dt = parser.parse_timestamp("23.12.23", "3:45:12 PM")
+        print(f"Parsed datetime: {dt}")
+    """
+    try:
+        # Convert 12-hour format to 24-hour
+        time_str = time_str.replace('.', ':')
+        if 'PM' in time_str:
+            time_str = time_str.replace('PM', '').strip()
+            hour = int(time_str.split(':')[0])
+            if hour != 12:
+                hour += 12
+            time_str = f"{hour}:{time_str.split(':')[1]}:{time_str.split(':')[2]}"
+        elif 'AM' in time_str:
+            time_str = time_str.replace('AM', '').strip()
+            hour = int(time_str.split(':')[0])
+            if hour == 12:
+                hour = 0
+            time_str = f"{hour:02d}:{time_str.split(':')[1]}:{time_str.split(':')[2]}"
+        
+        # Combine date and time
+        timestamp_str = f"{date_str} {time_str}"
+        return datetime.strptime(timestamp_str, '%d.%m.%y %H:%M:%S')
+    except Exception as e:
+        debug_print(f"Error parsing timestamp: {str(e)}")
+        return None</pre>
+
+        <h4>is_attachment_message(content)</h4>
+        <p>Detects if a message contains an attachment:</p>
+        <pre>
+def is_attachment_message(self, content):
+    """
+    Check if a message contains an attachment
+    
+    This function analyzes message content to determine if it contains
+    an attachment reference. It handles various attachment formats and
+    languages, including:
+    - Images (jpg, png, gif)
+    - Videos (mp4)
+    - Audio files (opus, mp3)
+    - Documents (pdf, doc)
+    
+    The function uses regex patterns to match different attachment formats
+    while being flexible enough to handle variations in naming conventions.
+    
+    Args:
+        content (str): Message content to analyze
+        
+    Returns:
+        bool: True if message contains attachment, False otherwise
+        
+    Example:
+        is_attachment = parser.is_attachment_message("<attached: image.jpg>")
+        print(f"Is attachment: {is_attachment}")
+    """
+    # Common attachment patterns
+    patterns = [
+        r'\u200E?<(?:Anhang|attachment|attached|file):\s*(\d+-(?:AUDIO|VIDEO|PHOTO|IMAGE|DOC|DOCUMENT)-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.[a-zA-Z0-9]+)>',
+        r'\u200E?<[^<>:]*\.(?:jpg|jpeg|png|gif|mp4|webp|opus|pdf|mp3|wav|doc|docx)(?:\s|$)'
+    ]
+    
+    # Check each pattern
+    for pattern in patterns:
+        if re.search(pattern, content, re.IGNORECASE):
+            return True
+    
+    return False</pre>
+
+        <h4>extract_attachment_name(content)</h4>
+        <p>Extracts attachment filename from message content:</p>
+        <pre>
+def extract_attachment_name(self, content):
+    """
+    Extract attachment filename from message content
+    
+    This function parses message content to extract the filename of an
+    attachment. It handles various formats and naming conventions while
+    maintaining the original filename structure.
+    
+    The function includes safety checks to prevent directory traversal
+    and ensures the extracted filename is valid and safe to use.
+    
+    Args:
+        content (str): Message content containing attachment reference
+        
+    Returns:
+        str or None: Extracted filename if found, None otherwise
+        
+    Example:
+        filename = parser.extract_attachment_name("<attached: IMG_12345.jpg>")
+        print(f"Attachment filename: {filename}")
+    """
+    # Try standard WhatsApp format first
+    match = re.search(r'<(?:Anhang|attachment|attached|file):\s*([^>]+)>', content)
+    if match:
+        filename = match.group(1)
+        # Clean filename
+        filename = os.path.basename(filename)
+        return filename
+    
+    # Try alternative format (direct file reference)
+    match = re.search(r'<([^<>:]*\.(?:jpg|jpeg|png|gif|mp4|webp|opus|pdf|mp3|wav|doc|docx))', content)
+    if match:
+        filename = match.group(1)
+        # Clean filename
+        filename = os.path.basename(filename)
+        return filename
+    
+    return None</pre>
+    </div>
+
+    <div class="function">
+        <h3>File Operations</h3>
+        
+        <h4>unpack_zip()</h4>
+        <p>Extracts the WhatsApp export ZIP file safely:</p>
+        <pre>
+def unpack_zip(self):
+    """
+    Extract the WhatsApp export ZIP file
+    
+    This function handles the extraction of the WhatsApp chat export ZIP file
+    to a temporary directory. It includes safety checks and proper error
+    handling to ensure reliable extraction.
+    
+    The function creates a temporary directory to avoid conflicts with
+    existing files and ensures proper cleanup after processing.
+    
+    Raises:
+        Exception: If ZIP extraction fails
+        
+    Example:
+        parser = WhatsAppExportParser('chat.zip')
+        parser.unpack_zip()
+        print(f"Files extracted to: {parser.extract_path}")
+    """
+    try:
+        with zipfile.ZipFile(self.zip_file_path, 'r') as zip_ref:
+            # Verify ZIP file integrity
+            if zip_ref.testzip() is not None:
+                raise Exception("ZIP file is corrupted")
+                
+            # Create temporary directory
+            self.extract_path = tempfile.mkdtemp()
+            debug_print(f"Created temporary directory: {self.extract_path}")
+            
+            # Extract files
+            zip_ref.extractall(self.extract_path)
+            debug_print(f"Extracted files to: {self.extract_path}")
+            
+            # Verify extraction
+            if not os.path.exists(self.extract_path):
+                raise Exception("Extraction failed - directory not created")
+                
+    except zipfile.BadZipFile:
+        raise Exception("Invalid or corrupted ZIP file")
+    except Exception as e:
+        if self.extract_path and os.path.exists(self.extract_path):
+            shutil.rmtree(self.extract_path)
+        raise Exception(f"Failed to extract ZIP: {str(e)}")
+</pre>
+
+        <h4>find_chat_file()</h4>
+        <p>Locates the main chat text file in extracted files:</p>
+        <pre>
+def find_chat_file(self):
+    """
+    Find the main chat text file in extracted files
+    
+    This function searches through the extracted files to find the main
+    WhatsApp chat text file. It handles various naming conventions and
+    ensures the correct file is identified.
+    
+    The function looks for files matching specific patterns that are
+    typical for WhatsApp chat exports across different platforms and
+    languages.
+    
+    Returns:
+        str or None: Full path to chat file if found, None otherwise
+        
+    Example:
+        chat_file = parser.find_chat_file()
+        if chat_file:
+            print(f"Found chat file: {chat_file}")
+    """
+    try:
+        for root, _, files in os.walk(self.extract_path):
+            for file in files:
+                # Check for standard WhatsApp chat file patterns
+                if file.startswith('_chat') and file.endswith('.txt'):
+                    file_path = os.path.join(root, file)
+                    debug_print(f"Found chat file: {file_path}")
+                    
+                    # Verify file is readable and non-empty
+                    if os.path.getsize(file_path) > 0:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            # Verify file contains chat messages
+                            first_line = f.readline().strip()
+                            if re.match(self.MESSAGE_PATTERN, first_line):
+                                return file_path
+                            
+        debug_print("No valid chat file found")
+        return None
+        
+    except Exception as e:
+        debug_print(f"Error finding chat file: {str(e)}")
+        return None</pre>
+    </div>
+
+    <div class="function">
+        <h3>Message Parsing</h3>
+        
+        <h4>parse_message_line()</h4>
+        <p>Parses a single line from the chat file:</p>
+        <pre>
+def parse_message_line(self, line):
+    """Parse a single message line"""
+    match = re.match(self.MESSAGE_PATTERN, line.strip())
+    if match:
+        date, time, sender, content = match.groups()
+        message = ChatMessage()
+        message.timestamp = self.parse_timestamp(date, time)
+        message.sender = sender
+        message.content = content
+        return message
+    return None</pre>
+
+        <h4>parse_timestamp()</h4>
+        <p>Converts WhatsApp timestamp format to datetime:</p>
+        <pre>
+def parse_timestamp(self, date_str, time_str):
+    """Parse WhatsApp timestamp format"""
+    try:
+        # Convert 12-hour format to 24-hour
+        time_str = time_str.replace('.', ':')
+        if 'PM' in time_str:
+            time_str = time_str.replace('PM', '').strip()
+            hour = int(time_str.split(':')[0])
+            if hour != 12:
+                hour += 12
+            time_str = f"{hour}:{time_str.split(':')[1]}:{time_str.split(':')[2]}"
+        elif 'AM' in time_str:
+            time_str = time_str.replace('AM', '').strip()
+            
+        timestamp_str = f"{date_str} {time_str}"
+        return datetime.strptime(timestamp_str, '%d.%m.%y %H:%M:%S')
+    except Exception as e:
+        debug_print(f"Error parsing timestamp: {str(e)}")
+        return None</pre>
+    </div>
+
+    <div class="function">
+        <h3>PDF Generation</h3>
+        
+        <h4>setup_pdf_fonts()</h4>
+        <p>Configures fonts for PDF generation:</p>
+        <pre>
+def setup_pdf_fonts(self):
+    """Setup fonts for PDF generation"""
+    try:
+        regular_font = self.find_font('NotoSans')
+        if regular_font:
+            font_name = 'NotoSans'
+            pdfmetrics.registerFont(TTFont(font_name, regular_font))
+            return font_name
+        return 'Helvetica'
+    except Exception as e:
+        return 'Helvetica'</pre>
+
+        <h4>process_image_message()</h4>
+        <p>Handles image messages with metadata:</p>
+        <pre>
+def process_image_message(self, message, img_path, elements, styles):
+    """Process an image message"""
+    try:
+        img_info = self.get_image_info(img_path)
+        if not img_info:
+            return
+
+        is_owner = message.sender == self.device_owner
+        width = min(img_info['width'], 300)
+        height = (width / img_info['width']) * img_info['height']
+        
+        img = Image(img_path, width=width, height=height)
+        meta_table = self.format_image_metadata(img_info, align_right=is_owner)
+        
+        elements.append(Paragraph(message.sender, 
+            styles['ChatLeft' if is_owner else 'ChatRight']))
+        elements.append(container)
+        elements.append(Spacer(1, 10))
+    except Exception as e:
+        debug_print(f"Error processing image: {str(e)}")</pre>
+    </div>
+
+    <h2 id="features">Advanced Features</h2>
+
+    <div class="function">
+        <h3>Font Management</h3>
+        <p>The script implements sophisticated font handling:</p>
+        <ul>
+            <li>Automatic font detection in system directories</li>
+            <li>Support for Unicode characters and emojis</li>
+            <li>Fallback to system fonts when needed</li>
+            <li>Custom font registration for PDF generation</li>
+        </ul>
+        
+        <h4>Font Search Locations:</h4>
+        <pre>
+common_paths = [
+    '/usr/share/fonts/noto',
+    '/usr/share/fonts/TTF',
+    '/usr/local/share/fonts',
+    '/usr/share/fonts/truetype',
+    '/usr/share/fonts/truetype/noto',
+    '/usr/share/fonts/dejavu',
+    os.path.expanduser('~/.fonts'),
+    os.path.expanduser('~/.local/share/fonts')
+]</pre>
+    </div>
+
+    <div class="function">
+        <h3>Image Processing</h3>
+        <p>Comprehensive image handling capabilities:</p>
+        <ul>
+            <li>Automatic image resizing while preserving aspect ratio</li>
+            <li>Metadata extraction (dimensions, size, MD5)</li>
+            <li>Support for various image formats (JPEG, PNG, etc.)</li>
+            <li>Error handling for corrupted images</li>
+            <li>Memory-efficient processing for large images</li>
+        </ul>
+    </div>
+
+    <h2 id="troubleshooting">Troubleshooting</h2>
+
+    <div class="warning">
+        <h3>Common Issues</h3>
+        <table>
+            <tr>
+                <th>Issue</th>
+                <th>Possible Cause</th>
+                <th>Solution</th>
+            </tr>
+            <tr>
+                <td>Missing Fonts</td>
+                <td>Required fonts not installed</td>
+                <td>Install Noto Sans font package</td>
+            </tr>
+            <tr>
+                <td>Memory Error</td>
+                <td>Large chat export</td>
+                <td>Increase available memory or split export</td>
+            </tr>
+            <tr>
+                <td>Corrupted Images</td>
+                <td>Incomplete download or extraction</td>
+                <td>Re-export chat and verify ZIP integrity</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="tip">
+        <h3>Performance Tips</h3>
+        <ul>
+            <li>Use SSD for faster file operations</li>
+            <li>Process smaller chat exports for better performance</li>
+            <li>Enable debug mode to identify bottlenecks</li>
+            <li>Close other memory-intensive applications</li>
+        </ul>
+    </div>
+
+    <div class="important">
+        <h3>Best Practices</h3>
+        <ul>
+            <li>Always backup chat exports before processing</li>
+            <li>Verify ZIP file integrity before parsing</li>
+            <li>Use appropriate font packages for better Unicode support</li>
+            <li>Monitor system resources during processing</li>
+            <li>Test with small exports before processing large ones</li>
+        </ul>
+    </div>
+
+</body>
+</html>

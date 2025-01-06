@@ -1,0 +1,4 @@
+reportlab
+Pillow>=10.0.0
+emoji
+mutagen>=1.47.0
