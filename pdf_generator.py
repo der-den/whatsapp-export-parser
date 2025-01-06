@@ -237,7 +237,7 @@ class PDFGenerator:
             content = content[:997] + "..."  # Truncate with ellipsis
         
         # Format timestamp, sender and content
-        timestamp_text = message.timestamp.strftime("%H:%M")
+        timestamp_text = message.timestamp.strftime("%Y-%m-%d %H:%M")
         safe_sender = self._escape_text(message.sender)
         safe_content = self._format_text(content)
         
