@@ -353,7 +353,6 @@ class PDFGenerator:
                 error_text = f"[Error loading attachment: {str(e)}]"
                 elements.append(Paragraph(error_text, self.styles['Normal']))
         
-        elements.append(Spacer(1, 8))  # Add space between messages
         return elements
 
     def _get_full_path(self, filename: str) -> str:
