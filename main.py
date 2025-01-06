@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument('--footertext', help='Custom text for the footer of each page')
     parser.add_argument('--zip-stats-only', action='store_true', help='Only print ZIP stats and exit')
     parser.add_argument('--stats-only', action='store_true', help='Only print statistics and exit')
+    parser.add_argument('-na', '--no-attachments', action='store_true', help='Do not include attachments in the PDF report')
     
     return parser.parse_args()
 
@@ -137,7 +138,7 @@ def main():
         pdf_generator = PDFGenerator(output_path, args.device_owner, 
                                    zip_handler.extract_path if zip_handler else None, 
                                    args.headertext, args.footertext, args.input,
-                                   zip_size, zip_md5)
+                                   zip_size, zip_md5, args.no_attachments)
         pdf_generator.generate_pdf(messages, chat_parser.chat_members, stats)
         
         print(f"PDF generated: {output_path}")

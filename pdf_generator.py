@@ -23,7 +23,8 @@ class PDFGenerator:
     def __init__(self, output_path: str, device_owner: Optional[str] = None, 
                  unzip_dir: Optional[str] = None, header_text: Optional[str] = None,
                  footer_text: Optional[str] = None, input_filename: Optional[str] = None,
-                 zip_size: Optional[int] = None, zip_md5: Optional[str] = None):
+                 zip_size: Optional[int] = None, zip_md5: Optional[str] = None,
+                 no_attachments: bool = False):
         self.output_path = output_path
         self.device_owner = device_owner
         self.unzip_dir = unzip_dir
@@ -32,6 +33,7 @@ class PDFGenerator:
         self.input_filename = input_filename
         self.zip_size = zip_size
         self.zip_md5 = zip_md5
+        self.no_attachments = no_attachments
         self.font_path = os.path.join(os.path.dirname(__file__), "fonts")
         self.main_font = "DejaVuSans"
         self.emoji_font = "Symbola"
@@ -294,64 +296,36 @@ class PDFGenerator:
         # Handle attachments
         if message.is_attachment and message.exists_in_export:
             debug_print(f"Loading attachment: {message.attachment_file}")
-            try:
-                # Remove invisible characters from filename before processing
-                clean_filename = ''.join(c for c in message.attachment_file if c.isprintable()).strip()
-                full_path = self._get_full_path(clean_filename)
-                
-                if any(clean_filename.lower().endswith(ext) 
-                      for ext in ('.jpg', '.jpeg', '.png', '.gif')):
-                    width, height = self._scale_image(
-                        full_path,
-                        max_width=4*inch,
-                        max_height=3*inch
-                    )
-                    img = Image(full_path, width=width, height=height)
+            if not self.no_attachments:
+                try:
+                    # Remove invisible characters from filename before processing
+                    clean_filename = ''.join(c for c in message.attachment_file if c.isprintable()).strip()
+                    full_path = self._get_full_path(clean_filename)
                     
-                    # Calculate available width and padding
-                    available_width = A4[0] - 2*36  # Page width minus margins
-                    
-                    # Create image table with full width
-                    if is_owner:
-                        # Left alignment for Owner: Image on left side
-                        image_table = Table([[img, None]], colWidths=[width, available_width - width])
-                        table_style = TableStyle([
-                            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                            ('TOPPADDING', (0, 0), (-1, -1), 5),
-                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ])
+                    if full_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        # Handle images
+                        try:
+                            max_width = 400  # Maximum width for images
+                            max_height = 400  # Maximum height for images
+                            scaled_width, scaled_height = self._scale_image(full_path, max_width, max_height)
+                            
+                            img = Image(full_path, width=scaled_width, height=scaled_height)
+                            elements.append(img)
+                        except Exception as e:
+                            print(f"Error processing image: {str(e)}", file=sys.stderr)
+                            error_text = f"[Error loading image: {str(e)}]"
+                            elements.append(Paragraph(error_text, self.styles['Normal']))
                     else:
-                        # Right alignment for Other: Image on right side
-                        image_table = Table([[None, img]], colWidths=[available_width - width, width])
-                        table_style = TableStyle([
-                            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-                            ('TOPPADDING', (0, 0), (-1, -1), 5),
-                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ])
-                    
-                    image_table.setStyle(table_style)
-                    elements.append(image_table)
-                    debug_print(f"Image loaded and aligned: {full_path} ({'right' if is_owner else 'left'})")
-                    
-                elif clean_filename.lower().endswith('.vcf'):
-                    contact = VCFHandler.parse_vcf_file(full_path)
-                    contact_elements = self._format_contact_info(contact)
-                    for element in contact_elements:
-                        elements.append(element)
-                else:
-                    filename = Path(clean_filename).name
-                    if len(filename) > 50:
-                        filename = filename[:47] + "..."
-                    attachment_text = f"[Attachment: {filename}]"
-                    elements.append(Paragraph(attachment_text, self.styles['Normal']))
-            except Exception as e:
-                print(f"Error adding attachment to PDF: {str(e)}", file=sys.stderr)
-                error_text = f"[Error loading attachment: {str(e)}]"
-                elements.append(Paragraph(error_text, self.styles['Normal']))
+                        # For non-image attachments, just show a placeholder
+                        elements.append(Paragraph(f"[Attachment: {clean_filename}]", self.styles['Normal']))
+                except Exception as e:
+                    print(f"Error adding attachment to PDF: {str(e)}", file=sys.stderr)
+                    error_text = f"[Error loading attachment: {str(e)}]"
+                    elements.append(Paragraph(error_text, self.styles['Normal']))
+            else:
+                # Just show the attachment name when no_attachments is True
+                clean_filename = ''.join(c for c in message.attachment_file if c.isprintable()).strip()
+                elements.append(Paragraph(f"[Attachment: {clean_filename}]", self.styles['Normal']))
         
         return elements
 
