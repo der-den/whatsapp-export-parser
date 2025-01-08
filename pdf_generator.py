@@ -243,8 +243,9 @@ class PDFGenerator:
         timestamp_text = message.timestamp.strftime("%Y-%m-%d %H:%M")
         safe_sender = self._escape_text(message.sender)
         safe_content = message.content
+        
         if message.is_attachment:
-            # For attachments, only show the formatted line when no_attachments is true
+            # For attachments, format the line for both modes (-na and normal)
             try:
                 metadata = json.loads(message.content)
                 if metadata.get('type') == 'image':
@@ -252,10 +253,23 @@ class PDFGenerator:
                     size_kb = metadata.get('size_bytes', 0) / 1024  # Convert to KB
                     attachment_num = metadata.get('attachment_number', 0)
                     safe_content = f"Image attachment: {filename} ({size_kb:.1f} KB) #{attachment_num}"
+                if metadata.get('type') == 'video':
+                    filename = metadata.get('filename', message.attachment_file)
+                    size_mb = metadata.get('size_bytes', 0) / 1024**2  # Convert to MB
+                    attachment_num = metadata.get('attachment_number', 0)
+                    safe_content = f"Video attachment: {filename} ({size_mb:.1f} MB) #{attachment_num}"
+                if metadata.get('type') == 'audio':
+                    filename = metadata.get('filename', message.attachment_file)
+                    size_mb = metadata.get('size_bytes', 0) / 1024**2  # Convert to MB
+                    attachment_num = metadata.get('attachment_number', 0)
+                    safe_content = f"Audio attachment: {filename} ({size_mb:.1f} MB) #{attachment_num}"
             except:
-                pass
-        safe_content = self._escape_text(safe_content)
-        safe_content = self._format_text(safe_content)
+                # If metadata parsing fails, just show the attachment file
+                safe_content = f"Attachment: {message.attachment_file}"
+        else:
+            # Only escape and format text for non-attachment messages
+            safe_content = self._escape_text(safe_content)
+            safe_content = self._format_text(safe_content)
         
         # Create paragraphs for each component
         timestamp_style = self.styles['TimestampOwner'] if is_owner else self.styles['TimestampOther']
@@ -319,7 +333,6 @@ class PDFGenerator:
                 attachment_num = metadata.get('attachment_number', 0)
                 
                 if metadata.get('type') == 'image':
-                    # Create a table for the image and its metadata
                     if not self.no_attachments:
                         try:
                             # Remove invisible characters from filename before processing
@@ -369,6 +382,66 @@ class PDFGenerator:
                             print(f"Error processing image: {str(e)}", file=sys.stderr)
                             error_text = f"[Error loading image: {str(e)}]"
                             elements.append(Paragraph(error_text, self.styles['Normal']))
+                    else:
+                        pass
+                if metadata.get('type') == 'video':
+                    if not self.no_attachments:
+                        try:
+                            # Get the preview image path from metadata
+                            if 'preview' in metadata and 'report_path' in metadata['preview']:
+                                # Get the meta directory path
+                                extract_dir_name = os.path.basename(self.unzip_dir)
+                                meta_dir = os.path.join(os.path.dirname(self.unzip_dir), f"{extract_dir_name}_meta")
+                                preview_path = os.path.join(meta_dir, metadata['preview']['meta_path'])
+                                
+                                # Create a table with two columns - preview on left, metadata on right
+                                max_width = 400
+                                max_height = 400
+                                scaled_width, scaled_height = self._scale_image(preview_path, max_width, max_height)
+                                
+                                img = Image(preview_path, width=scaled_width, height=scaled_height)
+                                
+                                # Format metadata text for video
+                                duration = metadata.get('duration_seconds', 0)
+                                minutes = int(duration // 60)
+                                seconds = int(duration % 60)
+                                
+                                meta_text = [
+                                    f"Filename: {filename}",
+                                    f"Size: {size_kb:.1f} KB",
+                                    f"{metadata.get('width', 'N/A')}x{metadata.get('height', 'N/A')}px",
+                                    f"Duration: {minutes}:{seconds:02d}",
+                                    f"FPS: {metadata.get('fps', 'N/A')}",
+                                    f"MD5: {metadata.get('md5_hash', 'N/A')}",
+                                    f"Sender:\n {message.sender}\n",
+                                    f"Attachment count: {attachment_num}"
+                                ]
+                                meta_para = Paragraph('<br/>'.join(meta_text), self.styles['Normal'])
+                                
+                                # Create table with preview and metadata
+                                table = Table(
+                                    [[img, meta_para]],
+                                    colWidths=[scaled_width, A4[0] - scaled_width - 72],  # 72 points margin
+                                    style=TableStyle([
+                                        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                                        ('LEFTPADDING', (0,0), (0,0), 0),  # No padding for preview cell
+                                        ('RIGHTPADDING', (0,0), (0,0), 0),  # No padding for preview cell
+                                        ('TOPPADDING', (0,0), (0,0), 0),    # No padding for preview cell
+                                        ('BOTTOMPADDING', (0,0), (0,0), 0), # No padding for preview cell
+                                        ('LEFTPADDING', (1,0), (1,0), 20),  # Extra padding for metadata
+                                        ('RIGHTPADDING', (1,0), (1,0), 6),  # Normal padding for metadata
+                                        ('GRID', (0,0), (0,0), 1, colors.black),  # 1-point border around preview cell
+                                    ])
+                                )
+                                elements.append(table)
+                                # Add space after the video preview
+                                elements.append(Spacer(1, 15))  # 15 points of vertical space
+                        except Exception as e:
+                            print(f"Error processing video preview: {str(e)}", file=sys.stderr)
+                            error_text = f"[Error loading video preview: {str(e)}]"
+                            elements.append(Paragraph(error_text, self.styles['Normal']))
+                    else:
+                        pass
             except json.JSONDecodeError:
                 print(f"Error parsing JSON metadata from content: {message.content}", file=sys.stderr)
                 elements.append(Paragraph(f"[Error parsing attachment metadata]", self.styles['Normal']))

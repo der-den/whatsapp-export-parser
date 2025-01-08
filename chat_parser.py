@@ -396,8 +396,6 @@ class ChatParser:
                     )
                     if attachment_file:
                         is_attachment = True
-                        #content = f"[Attachment: {attachment_file}]"
-                        content = attachment_file
                         debug_print(f"Add Attachment: {attachment_file}")
             except ValueError as e:
                 debug_print(f"Error extracting attachment: {e}")
