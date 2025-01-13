@@ -7,7 +7,6 @@ from typing import Optional, List, Set, Tuple
 from pathlib import Path
 from models import ChatMessage, ContentType
 from utils import debug_print
-from emoji_handler import process_emojis
 from zip_handler import ZipHandler
 from mutagen import File as MutagenFile
 from webp_handler import check_webp_animation, is_valid_sticker
