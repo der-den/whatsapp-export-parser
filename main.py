@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
+import warnings
 import argparse
 from pathlib import Path
 from zip_handler import ZipHandler
 from chat_parser import ChatParser
 from pdf_generator import PDFGenerator
-from utils import debug_print, DEBUG
 from meta_parser import MetaParser
 import os
+
+# Suppress PyTorch future warnings about weights_only
+warnings.filterwarnings('ignore', category=FutureWarning, module='torch.serialization')
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Convert WhatsApp chat export to PDF')
@@ -27,9 +30,19 @@ def main():
     args = parse_args()
     
     # Enable debug output if requested
+    debug_enabled = False
     if args.debug:
         global DEBUG
         DEBUG = True
+        debug_enabled = True
+        
+        print("Debug output enabled")
+
+        # Make sure debug is enabled in utils and initialize debug file
+        import utils
+        utils.DEBUG = True
+        utils.init_debug_file(args.input)
+
     
     try:
         print(f"Processing file: {args.input}")
@@ -46,19 +59,31 @@ def main():
                 zip_info = zip_handler.get_zip_info()
             except FileNotFoundError as e:
                 print(f"Error: {str(e)}")
+                if debug_enabled:
+                    import utils
+                    utils.close_debug_file()  # Close debug file on error
                 return 1
             except ValueError as e:
                 print(f"Error: {str(e)}")
+                if debug_enabled:
+                    import utils
+                    utils.close_debug_file()  # Close debug file on error
                 return 1
             except Exception as e:
                 print(f"Unexpected error reading ZIP file: {str(e)}")
                 if args.debug:
                     import traceback
                     traceback.print_exc()
+                if debug_enabled:
+                    import utils
+                    utils.close_debug_file()  # Close debug file on error
                 return 1
                 
             if not zip_info:
                 print("Error: Could not read ZIP file information")
+                if debug_enabled:
+                    import utils
+                    utils.close_debug_file()  # Close debug file on error
                 return 1
                 
             # Print ZIP stats
@@ -70,6 +95,9 @@ def main():
             print(f"Content Count: {zip_info['content_count']}")
             
             if args.zip_stats_only:
+                if debug_enabled:
+                    import utils
+                    utils.close_debug_file()  # Close debug file on exit
                 return 0
             
             # Extract ZIP contents
@@ -78,14 +106,23 @@ def main():
                 print(f"\nExtracted to: {extract_path}")
             except ValueError as e:
                 print(f"Error extracting ZIP: {str(e)}")
+                if debug_enabled:
+                    import utils
+                    utils.close_debug_file()  # Close debug file on error
                 return 1
-                
+
+        import utils
+        utils.debug_print("\n\n\n=== Parsing chat file ===\n\n\n")
+
         # Initialize parser and parse messages
         chat_parser = ChatParser(zip_handler, args.device_owner)
         messages = chat_parser.parse_chat_file()
         
         if not messages:
             print("Error: No messages found in chat file")
+            if debug_enabled:
+                import utils
+                utils.close_debug_file()  # Close debug file on error
             return 1
             
         # If no device owner specified, use the sender of the first message
@@ -110,8 +147,14 @@ def main():
             print(f"  {type_.name}: {count}")
         
         if args.stats_only:
+            if debug_enabled:
+                import utils
+                utils.close_debug_file()  # Close debug file on exit
             return 0
             
+        import utils
+        utils.debug_print("\n\n\n=== Processing meta information ===\n\n\n")
+
         # Process meta information (video previews, screenshots)
         print("\nProcessing meta information...")
         meta_parser = MetaParser(zip_handler)
@@ -121,9 +164,12 @@ def main():
         print("\nPreview Statistics:")
         for content_type, count in preview_stats.items():
             total = stats.messages_by_type[content_type]
-            success_rate = (count/total)*100 if total > 0 else 0
-            print(f"  {content_type.name}: {count}/{total} ({success_rate:.1f}%)")
+            #success_rate = (count/total)*100 if total > 0 else 0
+            print(f"  {content_type.name}: {count}")
             
+        # for test only, no pdf generation
+        #return 0
+
         # Determine output path for pdf creation
         if args.output:
             output_path = str(Path(args.output) / f"{Path(args.input).stem}.pdf")
@@ -131,6 +177,9 @@ def main():
             input_path = Path(args.input)
             output_path = str(input_path.with_suffix('.pdf'))
         
+        import utils
+        utils.debug_print("\n\n\n=== Generating PDF ===\n\n\n")
+
         # Generate PDF
         zip_size = os.path.getsize(args.input) if os.path.exists(args.input) else None
         zip_md5 = zip_handler.md5_hash if zip_handler else None
@@ -146,9 +195,15 @@ def main():
         print(f"Chat members: {', '.join(sorted(chat_parser.chat_members))}")
 
         # remove extracted files
-        if zip_handler and not args.debug:
-            zip_handler.cleanup()
+        if zip_handler:
+            if args.debug:
+                zip_handler.show_statistics()  # Show stats in debug mode
+            else:
+                zip_handler.cleanup()  # Show stats and cleanup files
 
+        if debug_enabled:
+            import utils
+            utils.close_debug_file()  # Close debug file before exiting
         return 0
         
     except Exception as e:
@@ -156,6 +211,9 @@ def main():
         if args.debug:
             import traceback
             traceback.print_exc()
+        if debug_enabled:
+            import utils
+            utils.close_debug_file()  # Close debug file on error
         return 1
 
 if __name__ == '__main__':

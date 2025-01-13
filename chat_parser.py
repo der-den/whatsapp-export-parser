@@ -111,7 +111,7 @@ class ChatParser:
             raise ValueError(f"Could not parse timestamp: {datetime_str}")
             
         except ValueError as e:
-            debug_print(f"Error parsing timestamp: {date_str} {time_str} - {str(e)}")
+            debug_print(f"Error parsing timestamp: {date_str} {time_str} - {str(e)}", component="chat")
             return datetime.now()  # Fallback to current time if parsing fails
 
     def _get_video_duration(self, file_path: str) -> Optional[float]:
@@ -131,7 +131,7 @@ class ChatParser:
                 return duration
             return None
         except Exception as e:
-            debug_print(f"Error getting video duration: {str(e)}")
+            debug_print(f"Error getting video duration: {str(e)}", component="chat")
             return None
 
     def _get_media_duration(self, file_path: str) -> Optional[int]:
@@ -153,7 +153,7 @@ class ChatParser:
             
             return None
         except Exception as e:
-            debug_print(f"Error getting media duration: {str(e)}")
+            debug_print(f"Error getting media duration: {str(e)}", component="chat")
             return None
 
     def _check_multiframe(self, attachment_file: Optional[str], content_type: ContentType) -> bool:
@@ -166,58 +166,7 @@ class ChatParser:
             return True  # Videos are always multiframe
         return False
 
-    def _get_content_type_new(self, content: str, attachment_file: Optional[str] = None) -> Tuple[ContentType, bool]:
-        """
-        Determine content type of the message and check if it's multiframe.
-        Returns a tuple of (ContentType, is_multiframe)
-        
-        Args:
-            content: The message content
-            attachment_file: The attachment filename if is_attachment is True
-            
-        Returns:
-            Tuple[ContentType, bool]: The content type and whether it's multiframe
-        """
-        # Default to text if no attachment
-        if not attachment_file:
-            # Check if content contains a URL
-            if re.search(self.URL_PATTERN, content):
-                return ContentType.LINK, False
-            return ContentType.TEXT, False
-            
-        # Get MIME type from file extension
-        ext = Path(attachment_file).suffix.lower()
-        mime_type = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.gif': 'image/gif',
-            '.webp': 'image/webp',
-            '.mp4': 'video/mp4',
-            '.3gp': 'video/3gpp',
-            '.avi': 'video/x-msvideo',
-            '.mov': 'video/quicktime',
-            '.webm': 'video/webm',
-            '.mp3': 'audio/mpeg3',
-            '.m4a': 'audio/mp4',
-            '.ogg': 'audio/ogg',
-            '.opus': 'audio/ogg',
-            '.wav': 'audio/wav',
-            '.pdf': 'application/pdf',
-            '.doc': 'application/msword',
-            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            '.xls': 'application/vnd.ms-excel',
-            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            '.ppt': 'application/vnd.ms-powerpoint',
-            '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            '.txt': 'text/plain',
-            '.vcf': 'text/x-vcard'
-        }.get(ext, 'application/octet-stream')
-        
-        content_type = ContentType.from_mime_type(mime_type)
-        return content_type, self._check_multiframe(attachment_file, content_type)
-
-    def _get_content_type_old(self, content: str, is_attachment: bool, attachment_file: Optional[str]) -> Tuple[ContentType, bool]:
+    def _get_content_type(self, content: str, is_attachment: bool, attachment_file: Optional[str]) -> Tuple[ContentType, bool]:
         """
         Determine content type of the message and check if it's multiframe.
         Returns a tuple of (ContentType, is_multiframe)
@@ -230,64 +179,151 @@ class ChatParser:
         Returns:
             Tuple[ContentType, bool]: The content type and whether it's multiframe
         """
+        debug_print(f"\n=== Getting content type ===", component="chat")
+        debug_print(f"Content: {content}", component="chat")
+        debug_print(f"Is attachment: {is_attachment}", component="chat")
+        debug_print(f"Attachment file: {attachment_file}", component="chat")
+        
+        content_type = ContentType.TEXT
+        debug_info = f"content={content}, attachment={attachment_file}"
+        
+        # Default to TEXT for non-attachments
         if not is_attachment:
-            # Check for URLs in non-attachment messages
             if re.search(self.URL_PATTERN, content):
                 return ContentType.LINK, False
             return ContentType.TEXT, False
-            
-        if not attachment_file:
-            return ContentType.TEXT, False
-            
-        # Get full path to the attachment
-        file_path = os.path.join(self.zip_handler.extract_path, attachment_file)
-        exists_in_export = os.path.exists(file_path)
         
-        # Get MIME type
-        mime_type = mimetypes.guess_type(attachment_file)[0]
-        debug_info = f"File: {attachment_file}, MIME: {mime_type}"
+        # Get MIME type for attachment
+        mime_type = None
+        exists_in_export = False
+        if attachment_file:
+            mime_type, _ = mimetypes.guess_type(attachment_file)
+            exists_in_export = bool(self.zip_handler.find_attachment_file(attachment_file))
+            debug_print(f"MIME type: {mime_type}", component="chat")
+            debug_print(f"Exists in export: {exists_in_export}", component="chat")
         
-        # Try to detect content type
-        content_type = ContentType.UNKNOWN
+        # Check for audio files first
+        audio_marker = self._is_audio_attachment_marker(content)
+        if audio_marker or (mime_type and mime_type.startswith('audio/')):
+            # Map common audio MIME types to ContentType
+            if mime_type == 'audio/mpeg' or mime_type == 'audio/mpeg3':
+                content_type = ContentType.MP3
+            elif mime_type == 'audio/ogg' or mime_type == 'audio/opus':
+                content_type = ContentType.OGG_OPUS
+            elif mime_type == 'audio/mp4' or mime_type == 'audio/m4a':
+                content_type = ContentType.MP4_AUDIO
+            elif mime_type == 'audio/wav':
+                content_type = ContentType.WAV
+            elif mime_type == 'audio/amr':
+                content_type = ContentType.AMR
+            else:
+                # Check file extension for special cases
+                if attachment_file:
+                    if attachment_file.lower().endswith('.opus'):
+                        content_type = ContentType.OGG_OPUS
+                    elif attachment_file.lower().endswith('.m4a'):
+                        content_type = ContentType.MP4_AUDIO
+                    else:
+                        content_type = ContentType.AUDIO  # Default to generic audio type
+            
+            debug_print(f"Audio file detected: {debug_info} -> {content_type}", component="chat")
+            return content_type, False
         
         # First check for stickers (they are WebP files in stickers directory)
         if 'stickers' in attachment_file.lower():
             content_type = ContentType.STICKER
-        # Then check by MIME type
-        elif mime_type:
-            content_type = ContentType.from_mime_type(mime_type)
-        # Finally check by extension
-        else:
-            ext = Path(attachment_file).suffix.lower()
-            if ext == '.vcf':
-                content_type = ContentType.CONTACT
-            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-                content_type = ContentType.IMAGE
-            elif ext in ['.mp4', '.3gp', '.avi', '.mov', '.webm']:
-                content_type = ContentType.VIDEO
-            elif ext in ['.mp3', '.m4a', '.ogg', '.opus', '.wav']:
-                content_type = ContentType.AUDIO
-            elif ext in ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt']:
-                content_type = ContentType.DOCUMENT
-        
-        # Log unknown content types
-        if content_type == ContentType.UNKNOWN:
-            debug_print(f"Unknown content type: {debug_info}")
             
-        # Track statistics
-        if is_attachment:
-            if not exists_in_export:
+            # Track statistics
+            if is_attachment and not exists_in_export:
                 self.statistics.missing_attachments += 1
                 self.statistics.missing_files.append(attachment_file)
-            elif content_type == ContentType.UNKNOWN:
-                self.statistics.unknown_content.append(attachment_file)
             
-        is_multiframe = self._check_multiframe(attachment_file, content_type)
-        return content_type, is_multiframe
-
-    def _get_content_type(self, content: str, is_attachment: bool, attachment_file: Optional[str]) -> Tuple[ContentType, bool]:
-        """Wrapper to choose between old and new content type detection"""
-        return self._get_content_type_old(content, is_attachment, attachment_file)
+            return content_type, check_webp_animation(os.path.join(self.zip_handler.extract_path, attachment_file)) if exists_in_export else False
+            
+        # Then check for image files
+        image_marker = self._is_image_attachment_marker(content)
+        if image_marker or (mime_type and mime_type.startswith('image/')):
+            if mime_type == 'image/webp':
+                if exists_in_export and is_valid_sticker(os.path.join(self.zip_handler.extract_path, attachment_file)):
+                    content_type = ContentType.STICKER
+                else:
+                    content_type = ContentType.WEBP
+            elif mime_type == 'image/gif':
+                content_type = ContentType.GIF
+            elif mime_type == 'image/jpeg':
+                content_type = ContentType.JPEG
+            elif mime_type == 'image/png':
+                content_type = ContentType.PNG
+            else:
+                content_type = ContentType.IMAGE
+            
+            # Track statistics
+            if is_attachment and not exists_in_export:
+                self.statistics.missing_attachments += 1
+                self.statistics.missing_files.append(attachment_file)
+            
+            return content_type, self._check_multiframe(attachment_file, content_type)
+            
+        # Check for video files
+        video_marker = self._is_video_attachment_marker(content)
+        if video_marker or (mime_type and mime_type.startswith('video/')):
+            if mime_type == 'video/mp4':
+                content_type = ContentType.MP4
+            elif mime_type == 'video/webm':
+                content_type = ContentType.WEBM
+            elif mime_type == 'video/quicktime':
+                content_type = ContentType.MOV
+            elif mime_type == 'video/3gpp':
+                content_type = ContentType.VIDEO_3GP
+            else:
+                content_type = ContentType.VIDEO
+            
+            # Track statistics
+            if is_attachment and not exists_in_export:
+                self.statistics.missing_attachments += 1
+                self.statistics.missing_files.append(attachment_file)
+            
+            return content_type, True  # Videos are always multiframe
+            
+        # Check for documents
+        doc_marker = self._is_document_attachment_marker(content)
+        if doc_marker or (mime_type and mime_type.startswith(('application/', 'text/'))):
+            if mime_type == 'application/pdf':
+                content_type = ContentType.PDF
+            elif mime_type == 'application/msword':
+                content_type = ContentType.MS_WORD
+            elif mime_type == 'application/vnd.ms-powerpoint':
+                content_type = ContentType.MS_POWERPOINT
+            elif mime_type == 'application/vnd.ms-excel':
+                content_type = ContentType.MS_EXCEL
+            elif mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+                content_type = ContentType.DOCX
+            elif mime_type == 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+                content_type = ContentType.PPTX
+            elif mime_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+                content_type = ContentType.XLSX
+            elif mime_type == 'text/x-vcard':
+                content_type = ContentType.VCF
+            else:
+                content_type = ContentType.DOCUMENT
+            
+            # Track statistics
+            if is_attachment and not exists_in_export:
+                self.statistics.missing_attachments += 1
+                self.statistics.missing_files.append(attachment_file)
+            
+            return content_type, False
+            
+        # If we couldn't determine the type, log it for debugging
+        if mime_type:
+            debug_print(f"Unknown content type: {debug_info}", component="chat")
+            if is_attachment:
+                self.statistics.unknown_content.append(debug_info)
+                if not exists_in_export:
+                    self.statistics.missing_attachments += 1
+                    self.statistics.missing_files.append(attachment_file)
+            
+        return ContentType.UNKNOWN, False
 
     def _is_image_attachment_marker(self, text: str) -> str | None:
         """
@@ -349,22 +385,22 @@ class ChatParser:
     def parse_message_line(self, line: str) -> Optional[ChatMessage]:
         """Parse a single line from the chat file into a ChatMessage object"""
         try:
-            debug_print(f"\n=== Parsing message line ===")
-            debug_print(f"Line: {line}")
+            debug_print(f"\n=== Parsing message line ===", component="chat")
+            debug_print(f"Line: {line}", component="chat")
             
             # Skip empty lines
             if not line.strip():
-                debug_print("Skipping empty line")
+                debug_print("Skipping empty line", component="chat")
                 return None
 
             # Try to match the full message pattern
             match = re.match(self.MESSAGE_PATTERN, line)
             if not match:
-                debug_print("No message pattern match")
+                debug_print("No message pattern match", component="chat")
                 return None
 
             date_str, time_str, sender, content = match.groups()
-            debug_print(f"Extracted: date={date_str}, time={time_str}, sender={sender}, content={content}")
+            debug_print(f"Extracted: date={date_str}, time={time_str}, sender={sender}, content={content}", component="chat")
             
             # Add sender to chat members
             self.chat_members.add(sender)
@@ -375,10 +411,7 @@ class ChatParser:
             if content.endswith(edited_marker):
                 is_edited = True
                 content = content[:-len(edited_marker)].rstrip()
-                debug_print("Message is edited")
-            
-            # Extract message content
-            content = match.group(4).strip()
+                debug_print("Message is edited", component="chat")
             
             # Initialize attachment variables
             is_attachment = False
@@ -387,59 +420,65 @@ class ChatParser:
             # Try to extract attachment filename if present
             try:
                 if content:
-                    # Check if the content matches our attachment patterns
-                    attachment_file = (
-                        self._is_image_attachment_marker(content) or
-                        self._is_video_attachment_marker(content) or
-                        self._is_audio_attachment_marker(content) or
-                        self._is_document_attachment_marker(content)
-                    )
-                    if attachment_file:
+                    # First check for the <Anhang: filename> pattern
+                    attachment_match = re.match(r'‎?<Anhang:\s*([^>]+)>', content)
+                    if attachment_match:
+                        attachment_file = attachment_match.group(1)
                         is_attachment = True
-                        debug_print(f"Add Attachment: {attachment_file}")
+                        debug_print(f"Found attachment marker: {attachment_file}", component="chat")
+                    else:
+                        # Check if the content matches our other attachment patterns
+                        attachment_file = (
+                            self._is_image_attachment_marker(content) or
+                            self._is_video_attachment_marker(content) or
+                            self._is_audio_attachment_marker(content) or
+                            self._is_document_attachment_marker(content)
+                        )
+                        if attachment_file:
+                            is_attachment = True
+                            debug_print(f"Found attachment pattern: {attachment_file}", component="chat")
             except ValueError as e:
-                debug_print(f"Error extracting attachment: {e}")
+                debug_print(f"Error extracting attachment: {e}", component="chat")
             
             # Get content information
             content_length = self._extract_content_length(content, is_attachment, attachment_file)
             content_type, is_multiframe = self._get_content_type(content, is_attachment, attachment_file)
-            debug_print(f"Content type: {content_type}, Multiframe: {is_multiframe}")
+            debug_print(f"Content type: {content_type}, Multiframe: {is_multiframe}", component="chat")
             
             # Update statistics
             self.statistics.total_messages += 1
             self.statistics.messages_by_sender[sender] += 1
             self.statistics.messages_by_type[content_type] += 1
-            self.statistics.content_types[content_type] += 1
             
+            # Track multiframe content
             if is_multiframe:
                 self.statistics.multiframe_count += 1
-                
-            if is_attachment and not self.zip_handler.find_attachment_file(attachment_file):
-                self.statistics.missing_attachments += 1
-                
-            if content_length and content_type in [ContentType.MP3, ContentType.MP4_AUDIO, 
-                                                 ContentType.MPEG_AUDIO, ContentType.OGG_OPUS,
-                                                 ContentType.MP4, ContentType.VIDEO_3GP]:
-                self.statistics.total_media_duration += content_length
-                
-            if is_attachment and self.zip_handler.find_attachment_file(attachment_file):
-                file_path = self.zip_handler.find_attachment_file(attachment_file)
-                if file_path:
-                    try:
-                        file_size = Path(file_path).stat().st_size
-                        self.statistics.attachment_sizes[content_type] += file_size
-                    except:
-                        pass
             
-            if content_type == ContentType.UNKNOWN:
-                self.statistics.unknown_content.append(attachment_file)
+            # Track attachments
+            if is_attachment:
+                exists_in_export = bool(self.zip_handler.find_attachment_file(attachment_file))
+                if not exists_in_export:
+                    self.statistics.missing_attachments += 1
+                    self.statistics.missing_files.append(attachment_file)
+                else:
+                    # Get file size
+                    file_path = self.zip_handler.find_attachment_file(attachment_file)
+                    if file_path:
+                        try:
+                            size = os.path.getsize(file_path)
+                            self.statistics.attachment_sizes[content_type] += size
+                        except OSError:
+                            debug_print(f"Error getting file size: {file_path}", component="chat")
+                    
+                    # Get media duration for audio/video
+                    if content_type.is_audio or content_type.is_video:
+                        duration = self._get_media_duration(file_path)
+                        if duration:
+                            self.statistics.total_media_duration += duration
             
-            if is_attachment and not self.zip_handler.find_attachment_file(attachment_file):
-                self.statistics.missing_files.append(attachment_file)
-                
             if is_edited:
                 self.statistics.edited_messages += 1
-                debug_print("Incrementing edited messages count")
+                debug_print("Incrementing edited messages count", component="chat")
             
             message = ChatMessage(
                 timestamp=self.parse_timestamp(date_str, time_str),
@@ -449,16 +488,16 @@ class ChatParser:
                 content_length=content_length,
                 is_attachment=is_attachment,
                 attachment_file=attachment_file,
-                exists_in_export=self.zip_handler.find_attachment_file(attachment_file) is not None,
+                exists_in_export=attachment_file is not None and self.zip_handler.find_attachment_file(attachment_file) is not None,
                 is_multiframe=is_multiframe,
                 is_edited=is_edited
             )
             
-            debug_print(f"Created message object: sender={message.sender}, type={message.content_type}, edited={message.is_edited}")
+            debug_print(f"Created message object: sender={message.sender}, type={message.content_type}, edited={message.is_edited}", component="chat")
             return message
 
         except Exception as e:
-            debug_print(f"Error parsing message line: {str(e)}")
+            debug_print(f"Error parsing message line: {str(e)}", component="chat")
             if DEBUG:
                 import traceback
                 traceback.print_exc()
@@ -468,7 +507,7 @@ class ChatParser:
         """Parse the entire chat file and return a list of ChatMessage objects"""
         chat_file = self.zip_handler.find_chat_file()
         if not chat_file:
-            debug_print("Chat file not found")
+            debug_print("Chat file not found", component="chat")
             return []
 
         try:
@@ -493,7 +532,7 @@ class ChatParser:
             return self.chat_messages
 
         except Exception as e:
-            debug_print(f"Error parsing chat file: {str(e)}")
+            debug_print(f"Error parsing chat file: {str(e)}", component="chat")
             return []
 
     def get_statistics(self) -> ChatStatistics:

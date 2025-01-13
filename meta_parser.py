@@ -17,6 +17,8 @@ from pptx import Presentation
 from models import ContentType, ChatMessage
 from utils import debug_print
 from typing import List, Dict, Optional, Tuple
+from datetime import datetime
+import whisper
 
 """
 Erstellt bzw Exrahiert für/von Attachments weitere Informationen und fügte diese als JSON Objekte der content variable hinzu. 
@@ -27,6 +29,13 @@ class MetaParser:
         self.zip_handler = zip_handler
         self.preview_success: Dict[ContentType, int] = {}
         self.attachment_counter = 0  # Initialize counter for attachments
+        self.total_audio_files = 0  # Initialize total audio files counter
+        self.current_audio_file = 0  # Initialize current audio file counter
+        self.transcription_stats = {
+            "transcoded": 0,
+            "loaded_existing": 0,
+            "errors": 0
+        }
 
     def _calculate_md5(self, file_path: str) -> str:
         """
@@ -38,25 +47,194 @@ class MetaParser:
         Returns:
             str: MD5-Hash der Datei
         """
-        hash_md5 = hashlib.md5()
         try:
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hash_md5.update(chunk)
-            return hash_md5.hexdigest()
+            with open(file_path, 'rb') as f:
+                file_hash = hashlib.md5()
+                while chunk := f.read(8192):
+                    file_hash.update(chunk)
+            return file_hash.hexdigest()
         except Exception as e:
             print(f"Error calculating MD5 hash: {e}")
             return ""
 
-    def _get_meta_directory(self):
+    def _get_meta_directory(self) -> str:
         """
         Erstellt und gibt das Meta-Verzeichnis zurück, parallel zum Extraktionsverzeichnis.
         """
         # Extrahiere den Hash-Namen aus dem Extraktionspfad
         extract_dir_name = os.path.basename(self.zip_handler.extract_path)
         meta_dir = os.path.join(os.path.dirname(self.zip_handler.extract_path), f"{extract_dir_name}_meta")
+        transcribe_dir = os.path.join(meta_dir, "transcribe")
+        
+        # Create directories if they don't exist
         os.makedirs(meta_dir, exist_ok=True)
+        os.makedirs(transcribe_dir, exist_ok=True)
+        
+        debug_print(f"Creating meta directory: {meta_dir}", component="meta")
+        
         return meta_dir
+
+    def _transcribe_audio(self, file_path: str, audio_file: str) -> dict:
+        """
+        Transcribes an audio file using Whisper and returns the transcription metadata.
+        
+        Args:
+            file_path: Path to the audio file
+            audio_file: Name of the audio file
+            
+        Returns:
+            dict: Transcription metadata including the text, model info, and any error information
+        """
+        result = {
+            "success": False,
+            "error": None,
+            "error_type": None,
+            "transcription": None
+        }
+        
+        try:
+            meta_dir = self._get_meta_directory()
+            transcribe_dir = os.path.join(meta_dir, "transcribe")
+            
+            # Generate output filename based on input file
+            base_name = os.path.splitext(os.path.basename(audio_file))[0]
+            json_output = os.path.join(transcribe_dir, f"{base_name}_transcription.json")
+            
+            # Check if transcription already exists
+            if os.path.exists(json_output):
+                with open(json_output, 'r', encoding='utf-8') as f:
+                    debug_print(f"Loading existing transcription for: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
+                    saved_result = json.load(f)
+                    if "error" in saved_result:
+                        self.transcription_stats["errors"] += 1
+                        return saved_result
+                    result["transcription"] = saved_result
+                    result["success"] = True
+                    self.transcription_stats["loaded_existing"] += 1
+                    return result
+            
+            # Load Whisper model (using "base" for a balance of speed and accuracy)
+            import whisper
+            import warnings
+            
+            # Specifically catch and suppress the torch.load warning
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=FutureWarning, 
+                                     message='.*torch.load.*weights_only=False.*')
+                model = whisper.load_model("large")
+            
+            self.current_audio_file += 1
+            debug_print(f"Transcribing audio: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
+
+            try:
+                # Transcribe audio
+                transcribe_result = model.transcribe(file_path)
+                
+                if not transcribe_result or "text" not in transcribe_result:
+                    debug_print(f"Warning: No transcription result for {audio_file}")
+                    result["error"] = "No transcription result"
+                    result["error_type"] = "empty_result"
+                    self.transcription_stats["errors"] += 1
+                    return result
+                
+                # Prepare metadata
+                transcription_meta = {
+                    "text": transcribe_result["text"],
+                    "model": "whisper-base",
+                    "language": transcribe_result.get("language", "unknown"),
+                    "segments": transcribe_result.get("segments", []),
+                    "transcribed_at": datetime.now().isoformat()
+                }
+                
+                result["transcription"] = transcription_meta
+                result["success"] = True
+                self.transcription_stats["transcoded"] += 1
+                
+                # Save transcription to file
+                with open(json_output, 'w', encoding='utf-8') as f:
+                    json.dump(result, f, ensure_ascii=False, indent=2)
+                
+                return result
+                
+            except RuntimeError as e:
+                error_msg = f"CUDA/GPU error while transcribing {audio_file}: {str(e)}"
+                debug_print(error_msg)
+                result["error"] = error_msg
+                result["error_type"] = "runtime_error"
+                self.transcription_stats["errors"] += 1
+                return result
+            except ValueError as e:
+                error_msg = f"Invalid audio format for {audio_file}: {str(e)}"
+                debug_print(error_msg)
+                result["error"] = error_msg
+                result["error_type"] = "value_error"
+                self.transcription_stats["errors"] += 1
+                return result
+            except Exception as e:
+                error_msg = f"Unexpected error transcribing {audio_file}: {str(e)}"
+                debug_print(error_msg)
+                result["error"] = error_msg
+                result["error_type"] = "transcribe_error"
+                self.transcription_stats["errors"] += 1
+                return result
+            
+        except Exception as e:
+            error_msg = f"Error in transcription setup for {audio_file}: {e}"
+            debug_print(error_msg)
+            result["error"] = error_msg
+            result["error_type"] = "setup_error"
+            self.transcription_stats["errors"] += 1
+            return result
+
+    def _get_audio_metadata(self, audio_file: str) -> dict:
+        """
+        Extrahiert Metadaten von einer Audiodatei.
+        
+        Args:
+            audio_file: Pfad zur Audiodatei
+            
+        Returns:
+            dict: Metadaten der Audiodatei
+        """
+        try:
+            file_path = os.path.join(self.zip_handler.extract_path, audio_file)
+            audio = MutagenFile(file_path)
+            
+            self.attachment_counter += 1  # Increment counter
+            self.total_audio_files += 1  # Increment total audio files counter
+            
+            metadata = {
+                "type": "audio",
+                "filename": audio_file,
+                "attachment_number": self.attachment_counter,
+                "format": audio.mime[0].split('/')[-1] if audio.mime else None,
+                "duration_seconds": audio.info.length if hasattr(audio.info, 'length') else None,
+                "channels": audio.info.channels if hasattr(audio.info, 'channels') else None,
+                "size_bytes": os.path.getsize(file_path),
+                "md5_hash": self._calculate_md5(file_path)
+            }
+            
+            # Try to add transcription if available, but don't fail if it's not possible
+            try:
+                transcribe_result = self._transcribe_audio(file_path, audio_file)
+                if transcribe_result["success"] and transcribe_result["transcription"]:
+                    metadata["transcription"] = transcribe_result["transcription"]
+                elif transcribe_result["error"]:
+                    metadata["transcription_error"] = {
+                        "error": transcribe_result["error"],
+                        "error_type": transcribe_result["error_type"]
+                    }
+            except Exception as e:
+                debug_print(f"Error during transcription: {e}", component="meta")
+                print(f"Error during transcription: {e}")
+            
+            # Remove None values
+            metadata = {k: v for k, v in metadata.items() if v is not None}
+            
+            return metadata
+        except Exception as e:
+            print(f"Error extracting audio metadata: {e}")
+            return {"error": str(e)}
 
     def _get_image_metadata(self, image_file: str) -> dict:
         """
@@ -127,42 +305,6 @@ class MetaParser:
             return metadata
         except Exception as e:
             print(f"Error extracting video metadata: {e}")
-            return {"error": str(e)}
-
-    def _get_audio_metadata(self, audio_file: str) -> dict:
-        """
-        Extrahiert Metadaten von einer Audiodatei.
-        
-        Args:
-            audio_file: Pfad zur Audiodatei
-            
-        Returns:
-            dict: Metadaten der Audiodatei
-        """
-        try:
-            file_path = os.path.join(self.zip_handler.extract_path, audio_file)
-            audio = MutagenFile(file_path)
-            
-            self.attachment_counter += 1  # Increment counter
-            metadata = {
-                "type": "audio",
-                "filename": audio_file,
-                "attachment_number": self.attachment_counter,
-                "format": audio.mime[0].split('/')[-1] if audio.mime else None,
-                "duration_seconds": audio.info.length if hasattr(audio.info, 'length') else None,
-                "bitrate": audio.info.bitrate if hasattr(audio.info, 'bitrate') else None,
-                "sample_rate": audio.info.sample_rate if hasattr(audio.info, 'sample_rate') else None,
-                "channels": audio.info.channels if hasattr(audio.info, 'channels') else None,
-                "size_bytes": os.path.getsize(file_path),
-                "md5_hash": self._calculate_md5(file_path)
-            }
-            
-            # Remove None values
-            metadata = {k: v for k, v in metadata.items() if v is not None}
-            
-            return metadata
-        except Exception as e:
-            print(f"Error extracting audio metadata: {e}")
             return {"error": str(e)}
 
     def _get_document_metadata(self, doc_file: str) -> dict:
@@ -300,12 +442,12 @@ class MetaParser:
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     frames.append(frame_rgb)
                 else:
-                    print(f"Error: Could not read frame at position {pos}")
+                    debug_print(f"Error taking video frame: {str(e)}", component="meta")
             
             cap.release()
             
             if len(frames) != 4:
-                print(f"Error: Could not extract all frames from {video_file}")
+                debug_print(f"Error taking video frames: {str(e)}", component="meta")
                 return None
             
             # Skaliere die Frames auf einheitliche Größe
@@ -346,7 +488,7 @@ class MetaParser:
             return os.path.join('videoframes', frame_file), os.path.join('images', 'videoframes', frame_file)
             
         except Exception as e:
-            print(f"Error extracting video frames: {e}")
+            debug_print(f"Error taking video frames: {str(e)}", component="meta")
             return None
 
     def _take_webpage_screenshot(self, url: str) -> Optional[Tuple[str, str]]:
@@ -402,7 +544,7 @@ class MetaParser:
                 
                 # Mache den Screenshot
                 driver.save_screenshot(screenshot_path)
-                print(f"Screenshot saved to: {screenshot_path}")
+                debug_print(f"Taking screenshot of: {url}", component="meta")
                 
                 # Kopiere Screenshot in den Report
                 shutil.copy2(screenshot_path, report_screenshot_path)
@@ -418,12 +560,12 @@ class MetaParser:
                 driver.quit()
                 
         except Exception as e:
-            print(f"Error taking screenshot: {e}")
+            debug_print(f"Error taking screenshot: {str(e)}", component="meta")
             return None
 
     def process_messages(self, messages: List[ChatMessage], url_pattern: str) -> Dict[ContentType, int]:
         """
-        Verarbeitet eine Liste von Nachrichten und erstellt Meta-Informationen wie Video-Previews.
+        Verarbeitet eine Liste von Nachrichten, extrahiert Meta-Informationen und speichert sie als JSON im Content.
         
         Args:
             messages: Liste der Chat-Nachrichten
@@ -432,67 +574,118 @@ class MetaParser:
         Returns:
             Dict[ContentType, int]: Anzahl der erfolgreichen Previews pro ContentType
         """
-        for msg in messages:
-            if msg.content_type.is_video and msg.attachment_file:
-                debug_print(f"Processing video: {msg.attachment_file}")
-                try:
-                    frame_paths = self._take_video_frames(msg.attachment_file)
-                    metadata = self._get_video_metadata(msg.attachment_file, frame_paths)
-                    if metadata and "error" not in metadata:
-                        msg.content = json.dumps(metadata, ensure_ascii=False)
-                        debug_print(f"Added metadata and preview for video: {msg.attachment_file}")
-                        self.preview_success[ContentType.VIDEO] = self.preview_success.get(ContentType.VIDEO, 0) + 1
-                except Exception as e:
-                    print(f"Error processing video: {e}")
+        total_messages = len(messages)
 
-            if msg.content_type.is_image and msg.attachment_file:
-                debug_print(f"Processing image: {msg.attachment_file}")
+        for i, message in enumerate(messages):
+            
+            # show progress
+            if i % 100 == 0 or i == total_messages - 1:
+                progress = (i / total_messages) * 100
+                print(f"Progress: {progress:.1f}% ({i+1}/{total_messages} messages)", end='\r')
+
+            # Process Images
+            if message.content_type.is_image and message.attachment_file:
+                debug_print(f"Processing image: {message.attachment_file}", component="meta")
                 try:
-                    metadata = self._get_image_metadata(msg.attachment_file)
+                    metadata = self._get_image_metadata(message.attachment_file)
                     if metadata and "error" not in metadata:
-                        msg.content = json.dumps(metadata, ensure_ascii=False)
-                        debug_print(f"Added metadata for image: {msg.attachment_file}")
+                        message.content = json.dumps(metadata, ensure_ascii=False)
+                        debug_print(f"Added metadata for image: {message.attachment_file}", component="meta")
                 except Exception as e:
                     print(f"Error processing image: {e}")
-
-            if msg.content_type.is_audio and msg.attachment_file:
-                debug_print(f"Processing audio: {msg.attachment_file}")
+                self.preview_success[ContentType.IMAGE] = self.preview_success.get(ContentType.IMAGE, 0) + 1
+        
+            # Process Videos
+            if message.content_type.is_video and message.attachment_file:
+                debug_print(f"Taking video frames for: {message.attachment_file}", component="meta")
                 try:
-                    metadata = self._get_audio_metadata(msg.attachment_file)
+                    frame_paths = self._take_video_frames(message.attachment_file)
+                    metadata = self._get_video_metadata(message.attachment_file, frame_paths)
                     if metadata and "error" not in metadata:
-                        msg.content = json.dumps(metadata, ensure_ascii=False)
-                        debug_print(f"Added metadata for audio: {msg.attachment_file}")
+                        message.content = json.dumps(metadata, ensure_ascii=False)
+                        debug_print(f"Added metadata and preview for video: {message.attachment_file}", component="meta")
+                except Exception as e:
+                    print(f"Error taking video frames: {str(e)}", component="meta")      
+                self.preview_success[ContentType.VIDEO] = self.preview_success.get(ContentType.VIDEO, 0) + 1
+        
+            # Process Audio
+            if message.content_type.is_audio and message.attachment_file:
+                debug_print(f"Processing audio: {message.attachment_file}", component="meta")
+                try:
+                    metadata = self._get_audio_metadata(message.attachment_file)
+                    if metadata and "error" not in metadata:
+                        message.content = json.dumps(metadata, ensure_ascii=False)
+                        debug_print(f"Added metadata for audio: {message.attachment_file}", component="meta")
                 except Exception as e:
                     print(f"Error processing audio: {e}")
-
-            if msg.content_type.is_document and msg.attachment_file:
-                debug_print(f"Processing document: {msg.attachment_file}")
+                self.preview_success[ContentType.AUDIO] = self.preview_success.get(ContentType.AUDIO, 0) + 1
+        
+            # Process Documents
+            if message.content_type.is_document and message.attachment_file:
+                debug_print(f"Processing document: {message.attachment_file}", component="meta")
                 try:
-                    metadata = self._get_document_metadata(msg.attachment_file)
+                    metadata = self._get_document_metadata(message.attachment_file)
                     if metadata and "error" not in metadata:
-                        msg.content = json.dumps(metadata, ensure_ascii=False)
-                        debug_print(f"Added metadata for document: {msg.attachment_file}")
+                        message.content = json.dumps(metadata, ensure_ascii=False)
+                        debug_print(f"Added metadata for document: {message.attachment_file}", component="meta")
                 except Exception as e:
                     print(f"Error processing document: {e}")
-                    
-            if msg.content_type == ContentType.LINK:
+                self.preview_success[ContentType.DOCUMENT] = self.preview_success.get(ContentType.DOCUMENT, 0) + 1
+
+            # Process Stickers/WebP
+            if message.content_type == ContentType.STICKER and message.attachment_file:
+                debug_print(f"Processing sticker: {message.attachment_file}", component="meta")
                 try:
-                    urls = re.findall(url_pattern, msg.content)
+                    file_path = os.path.join(self.zip_handler.extract_path, message.attachment_file)
+                    metadata = {
+                        "type": "sticker",
+                        "filename": message.attachment_file,
+                        "format": "webp",
+                        "size_bytes": os.path.getsize(file_path)
+                    }
+                    message.content = json.dumps(metadata, ensure_ascii=False)
+                    debug_print(f"Added metadata for sticker: {message.attachment_file}", component="meta")
+                except Exception as e:
+                    print(f"Error processing sticker: {e}")
+                self.preview_success[ContentType.STICKER] = self.preview_success.get(ContentType.STICKER, 0) + 1
+
+            # Process Links
+            if message.content_type == ContentType.LINK:
+                try:
+                    urls = re.findall(url_pattern, message.content)
                     if urls:
                         url = urls[0]
+                        debug_print(f"Found URL: {url}", component="meta")
                         # Screenshot deaktiviert - Code bleibt für spätere Verwendung
                         '''
                         screenshot_paths = self._take_webpage_screenshot(url)
                         if screenshot_paths:
                             meta_path, report_path = screenshot_paths
-                            msg.content = f"{msg.content}\n[Screenshot: {meta_path}]"
-                            msg.content += f'\n<div class="link-preview"><img src="{report_path}" alt="Screenshot of {url}" class="link-screenshot"/></div>'
+                            message.content = f"{message.content}\n[Screenshot: {meta_path}]"
+                            message.content += f'\n<div class="link-preview"><img src="{report_path}" alt="Screenshot of {url}" class="link-screenshot"/></div>'
                             print(f"Created screenshot for {url}")
                             self.preview_success[ContentType.LINK] = self.preview_success.get(ContentType.LINK, 0) + 1
                         else:
                             print(f"Failed to create screenshot for {url}")
                         '''
                 except Exception as e:
-                    print(f"Error processing URL: {e}")
-                    
+                    print(f"Error processing URL: {e}", component="meta")
+                self.preview_success[ContentType.LINK] = self.preview_success.get(ContentType.LINK, 0) + 1
+
+        print("\n\nProcessing Summary:")
+        for content_type, count in self.preview_success.items():
+            print(f"  {content_type.name}: {count}")
+        print(f"Processed {self.preview_success[ContentType.IMAGE]} images")
+        print(f"Processed {self.preview_success[ContentType.VIDEO]} videos")
+        print(f"Processed {self.preview_success[ContentType.DOCUMENT]} documents")
+        print(f"Processed {self.preview_success.get(ContentType.STICKER, 0)} stickers")
+        print(f"Processed {self.preview_success[ContentType.LINK]} links")
+
+        if self.transcription_stats["transcoded"] > 0 or self.transcription_stats["errors"] > 0:
+            print(f"\nAudio Processing Summary:")
+            print(f"Total audio files processed: {self.preview_success[ContentType.AUDIO]}")
+            print(f"- Successfully transcribed: {self.transcription_stats['transcoded']}")
+            print(f"- Loaded from existing: {self.transcription_stats['loaded_existing']}")
+            print(f"- Failed transcriptions: {self.transcription_stats['errors']}")
+
         return self.preview_success
