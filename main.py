@@ -64,7 +64,7 @@ def main():
     debug_enabled = False
     if args.debug:
         debug_enabled = True
-        print("Debug output enabled")
+        print(app_lang.get('debug', 'enabled'))
 
         # Make sure debug is enabled in utils and initialize debug file
         utils.DEBUG = True
@@ -137,21 +137,21 @@ def main():
         # If no device owner specified, use the sender of the first message
         if not args.device_owner and messages:
             args.device_owner = messages[0].sender
-            print(f"No device owner specified, using first sender: {args.device_owner}")
+            print(app_lang.get('info', 'using_first_sender').format(args.device_owner))
             
         # Get and display statistics
         stats = chat_parser.get_statistics()
         
         # Always show statistics
-        print("\nChat Statistics:")
-        print(f"Total Messages: {stats.total_messages}")
-        print(f"Edited Messages: {stats.edited_messages}")
-        print(f"Multiframe Content: {stats.multiframe_count}")
-        print(f"Missing Attachments: {stats.missing_attachments}")
-        print(f"\nMessages by Sender:")
+        print(f"\n{app_lang.get('statistics', 'title')}:")
+        print(f"{app_lang.get('statistics', 'total_messages')}: {stats.total_messages}")
+        print(f"{app_lang.get('statistics', 'edited_messages')}: {stats.edited_messages}")
+        print(f"{app_lang.get('statistics', 'multiframe_content')}: {stats.multiframe_count}")
+        print(f"{app_lang.get('statistics', 'missing_attachments')}: {stats.missing_attachments}")
+        print(f"\n{app_lang.get('statistics', 'messages_by_sender')}:")
         for sender, count in stats.messages_by_sender.most_common():
             print(f"  {sender}: {count}")
-        print(f"\nMessages by Type:")
+        print(f"\n{app_lang.get('statistics', 'messages_by_type')}:")
         for type_, count in stats.messages_by_type.most_common():
             print(f"  {type_.name}: {count}")
         
@@ -164,12 +164,12 @@ def main():
         utils.debug_print("\n\n\n=== Processing meta information ===\n\n\n")
 
         # Process meta information (video previews, screenshots)
-        print("\nProcessing meta information...")
+        print(f"\n{app_lang.get('info', 'processing_meta')}...")
         meta_parser = MetaParser(zip_handler)
         preview_stats = meta_parser.process_messages(messages, ChatParser.URL_PATTERN)
         
         # Show preview statistics
-        print("\nPreview Statistics:")
+        print(f"\n{app_lang.get('statistics', 'preview_title')}:")
         for content_type, count in preview_stats.items():
             total = stats.messages_by_type[content_type]
             #success_rate = (count/total)*100 if total > 0 else 0
@@ -198,27 +198,35 @@ def main():
                                    zip_size, zip_md5, args.no_attachments)
         pdf_generator.generate_pdf(messages, chat_parser.chat_members, stats)
         
-        print(f"PDF generated: {output_path}")
-        print(f"Total messages processed: {len(messages)}")
-        print(f"Chat members: {', '.join(sorted(chat_parser.chat_members))}")
-
-        # remove extracted files
+        print(f"{app_lang.get('info', 'pdf_generated')}: {output_path}")
+        print(f"{app_lang.get('info', 'total_messages_processed')}: {len(messages)}")
+        print(f"{app_lang.get('info', 'chat_members')}: {', '.join(sorted(chat_parser.chat_members))}")
+        
+        # Clean up extracted files if we used a ZIP
         if zip_handler:
             if args.debug:
                 zip_handler.show_statistics()  # Show stats in debug mode
             else:
                 zip_handler.cleanup()  # Show stats and cleanup files
-
+            
         if debug_enabled:
             import utils
             utils.close_debug_file()  # Close debug file before exiting
         return 0
         
+    except KeyboardInterrupt:
+        print(app_lang.get('errors', 'interrupted'))
+        if debug_enabled:
+            utils.close_debug_file()  # Close debug file on interrupt
+        return 1
     except Exception as e:
-        print(app_lang.get('errors', 'general').format(str(e)))
-        if args.debug:
+        if debug_enabled:
+            import utils
             import traceback
             traceback.print_exc()
+        
+        print(app_lang.get('errors', 'general').format(str(e)))
+        
         if debug_enabled:
             import utils
             utils.close_debug_file()  # Close debug file on error

@@ -28,9 +28,33 @@ LANG_STRINGS = {
             'date_range': 'Zeitraum'
         }
     },
+    'statistics': {
+        'title': 'Chat-Statistiken',
+        'total_messages': 'Gesamtnachrichten',
+        'edited_messages': 'Bearbeitete Nachrichten',
+        'multiframe_content': 'Mehrrahmeninhalt',
+        'missing_attachments': 'Fehlende Anhänge',
+        'messages_by_sender': 'Nachrichten nach Absender',
+        'messages_by_type': 'Nachrichten nach Typ',
+        'preview_title': 'Vorschau-Statistiken'
+    },
+    'info': {
+        'using_first_sender': 'Kein Gerätebesitzer angegeben, verwende ersten Absender: {}',
+        'processing_meta': 'Verarbeite Meta-Informationen',
+        'pdf_generated': 'PDF erstellt: {}',
+        'total_messages_processed': 'Verarbeitete Nachrichten insgesamt: {}',
+        'chat_members': 'Chat-Teilnehmer: {}'
+    },
+    'debug': {
+        'enabled': 'Debug-Ausgabe aktiviert'
+    },
     'errors': {
-        'invalid_language': 'Ungültiger Sprachcode. Unterstützte Sprachen sind: {}',
         'file_not_found': 'Datei nicht gefunden: {}',
-        'transcription_failed': 'Audio-Transkription fehlgeschlagen: {}'
+        'zip_error': 'Fehler beim Verarbeiten der ZIP-Datei: {}',
+        'general': 'Ein Fehler ist aufgetreten: {}',
+        'no_chat_file': 'Keine Chat-Datei im ZIP-Archiv gefunden',
+        'extraction_failed': 'Fehler beim Extrahieren des ZIP-Archivs: {}',
+        'no_messages_found': 'Keine Nachrichten in der Chat-Datei gefunden',
+        'interrupted': 'Vorgang vom Benutzer unterbrochen'
     }
 }

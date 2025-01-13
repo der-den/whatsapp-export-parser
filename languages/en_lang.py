@@ -28,9 +28,33 @@ LANG_STRINGS = {
             'date_range': 'Date Range'
         }
     },
+    'statistics': {
+        'title': 'Chat Statistics',
+        'total_messages': 'Total Messages',
+        'edited_messages': 'Edited Messages',
+        'multiframe_content': 'Multiframe Content',
+        'missing_attachments': 'Missing Attachments',
+        'messages_by_sender': 'Messages by Sender',
+        'messages_by_type': 'Messages by Type',
+        'preview_title': 'Preview Statistics'
+    },
+    'info': {
+        'using_first_sender': 'No device owner specified, using first sender: {}',
+        'processing_meta': 'Processing meta information',
+        'pdf_generated': 'PDF generated: {}',
+        'total_messages_processed': 'Total messages processed: {}',
+        'chat_members': 'Chat members: {}'
+    },
+    'debug': {
+        'enabled': 'Debug output enabled'
+    },
     'errors': {
-        'invalid_language': 'Invalid language code. Supported languages are: {}',
         'file_not_found': 'File not found: {}',
-        'transcription_failed': 'Audio transcription failed: {}'
+        'zip_error': 'Error processing ZIP file: {}',
+        'general': 'An error occurred: {}',
+        'no_chat_file': 'No chat file found in ZIP archive',
+        'extraction_failed': 'Failed to extract ZIP contents: {}',
+        'no_messages_found': 'No messages found in chat file',
+        'interrupted': 'Operation interrupted by user'
     }
 }
