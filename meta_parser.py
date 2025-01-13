@@ -7,6 +7,7 @@ import re
 import hashlib
 import shutil
 import json
+import warnings
 from pathlib import Path
 from PIL import Image
 from mutagen import File as MutagenFile
@@ -36,6 +37,29 @@ class MetaParser:
             "loaded_existing": 0,
             "errors": 0
         }
+        
+        # Load configuration
+        self.config = self._load_config()
+        
+    def _load_config(self) -> dict:
+        """Load configuration from config.json"""
+        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            # Return default configuration if file not found
+            return {
+                "audio": {
+                    "transcription_enabled": True,
+                    "whisper_model": "large"
+                },
+                "output": {
+                    "include_attachments": True,
+                    "max_image_width": 800,
+                    "max_image_height": 600
+                }
+            }
 
     def _calculate_md5(self, file_path: str) -> str:
         """
@@ -74,7 +98,7 @@ class MetaParser:
         
         return meta_dir
 
-    def _transcribe_audio(self, file_path: str, audio_file: str) -> dict:
+    def _transcribe_audio(self, file_path: str, audio_file: str) -> Dict:
         """
         Transcribes an audio file using Whisper and returns the transcription metadata.
         
@@ -88,101 +112,83 @@ class MetaParser:
         result = {
             "success": False,
             "error": None,
-            "error_type": None,
-            "transcription": None
+            "error_type": None
         }
         
-        try:
-            meta_dir = self._get_meta_directory()
-            transcribe_dir = os.path.join(meta_dir, "transcribe")
-            
-            # Generate output filename based on input file
-            base_name = os.path.splitext(os.path.basename(audio_file))[0]
-            json_output = os.path.join(transcribe_dir, f"{base_name}_transcription.json")
-            
-            # Check if transcription already exists
-            if os.path.exists(json_output):
-                with open(json_output, 'r', encoding='utf-8') as f:
-                    debug_print(f"Loading existing transcription for: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
-                    saved_result = json.load(f)
-                    if "error" in saved_result:
-                        self.transcription_stats["errors"] += 1
-                        return saved_result
-                    result["transcription"] = saved_result
-                    result["success"] = True
-                    self.transcription_stats["loaded_existing"] += 1
-                    return result
-            
-            # Load Whisper model (using "base" for a balance of speed and accuracy)
-            import whisper
-            import warnings
-            
-            # Specifically catch and suppress the torch.load warning
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=FutureWarning, 
-                                     message='.*torch.load.*weights_only=False.*')
-                model = whisper.load_model("large")
-            
-            self.current_audio_file += 1
-            debug_print(f"Transcribing audio: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
+        # Check if transcription is enabled in config
+        if not self.config["audio"]["transcription_enabled"]:
+            result["error"] = "Audio transcription is disabled in configuration"
+            result["error_type"] = "transcription_disabled"
+            return result
 
+        # Get the model name from config
+        model_name = self.config["audio"]["whisper_model"]
+        
+        # Check for existing transcription
+        meta_dir = self._get_meta_directory()
+        json_output = os.path.join(meta_dir, f"{audio_file}.transcription.{model_name}.json")
+        
+        if os.path.exists(json_output):
             try:
-                # Transcribe audio
-                transcribe_result = model.transcribe(file_path)
-                
-                if not transcribe_result or "text" not in transcribe_result:
-                    debug_print(f"Warning: No transcription result for {audio_file}")
-                    result["error"] = "No transcription result"
-                    result["error_type"] = "empty_result"
-                    self.transcription_stats["errors"] += 1
-                    return result
-                
-                # Prepare metadata
-                transcription_meta = {
-                    "text": transcribe_result["text"],
-                    "model": "whisper-base",
-                    "language": transcribe_result.get("language", "unknown"),
-                    "segments": transcribe_result.get("segments", []),
-                    "transcribed_at": datetime.now().isoformat()
-                }
-                
-                result["transcription"] = transcription_meta
-                result["success"] = True
-                self.transcription_stats["transcoded"] += 1
-                
-                # Save transcription to file
-                with open(json_output, 'w', encoding='utf-8') as f:
-                    json.dump(result, f, ensure_ascii=False, indent=2)
-                
-                return result
-                
-            except RuntimeError as e:
-                error_msg = f"CUDA/GPU error while transcribing {audio_file}: {str(e)}"
-                debug_print(error_msg)
-                result["error"] = error_msg
-                result["error_type"] = "runtime_error"
-                self.transcription_stats["errors"] += 1
-                return result
-            except ValueError as e:
-                error_msg = f"Invalid audio format for {audio_file}: {str(e)}"
-                debug_print(error_msg)
-                result["error"] = error_msg
-                result["error_type"] = "value_error"
-                self.transcription_stats["errors"] += 1
-                return result
-            except Exception as e:
-                error_msg = f"Unexpected error transcribing {audio_file}: {str(e)}"
-                debug_print(error_msg)
-                result["error"] = error_msg
-                result["error_type"] = "transcribe_error"
+                with open(json_output, 'r', encoding='utf-8') as f:
+                    existing_result = json.load(f)
+                    self.transcription_stats["loaded_existing"] += 1
+                    return existing_result
+            except:
+                pass  # If loading fails, proceed with new transcription
+        
+        import whisper
+        
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=FutureWarning, 
+                                 message='.*torch.load.*weights_only=False.*')
+            model = whisper.load_model(model_name)
+        
+        self.current_audio_file += 1
+        debug_print(f"Transcribing audio: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
+
+        try:
+            # Transcribe audio
+            transcribe_result = model.transcribe(file_path)
+            
+            if not transcribe_result or "text" not in transcribe_result:
+                debug_print(f"Warning: No transcription result for {audio_file}")
+                result["error"] = "No transcription result"
+                result["error_type"] = "empty_result"
                 self.transcription_stats["errors"] += 1
                 return result
             
-        except Exception as e:
-            error_msg = f"Error in transcription setup for {audio_file}: {e}"
+            # Prepare metadata
+            transcription_meta = {
+                "text": transcribe_result["text"],
+                "model": f"whisper-{model_name}",
+                "language": transcribe_result.get("language", "unknown"),
+                "segments": transcribe_result.get("segments", []),
+                "transcribed_at": datetime.now().isoformat()
+            }
+            
+            result["transcription"] = transcription_meta
+            result["success"] = True
+            self.transcription_stats["transcoded"] += 1
+            
+            # Save transcription to file
+            with open(json_output, 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+            
+            return result
+            
+        except RuntimeError as e:
+            error_msg = f"CUDA/GPU error while transcribing {audio_file}: {str(e)}"
             debug_print(error_msg)
             result["error"] = error_msg
-            result["error_type"] = "setup_error"
+            result["error_type"] = "cuda_error"
+            self.transcription_stats["errors"] += 1
+            return result
+        except Exception as e:
+            error_msg = f"Error transcribing {audio_file}: {str(e)}"
+            debug_print(error_msg)
+            result["error"] = error_msg
+            result["error_type"] = "general_error"
             self.transcription_stats["errors"] += 1
             return result
 

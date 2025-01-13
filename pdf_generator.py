@@ -338,8 +338,6 @@ class PDFGenerator:
                         # Create a list of metadata information
                         info_list = [
                             f"Duration: {metadata.get('duration_seconds', 'N/A'):.1f} seconds",
-                            f"Format: {metadata.get('format', 'N/A')}",
-                            f"Channels: {metadata.get('channels', 'N/A')}",
                             f"Size: {metadata.get('size_bytes', 0) / 1024**2:.1f} MB",
                             f"MD5: {metadata.get('md5_hash', 'N/A')}",
                             f"Sender: {message.sender}"

@@ -1,0 +1,15 @@
+{
+    "audio": {
+        "transcription_enabled": false,
+        "whisper_model": "medium"
+    },
+    "output": {
+        "include_attachments": true,
+        "max_image_width": 800,
+        "max_image_height": 600
+    },
+    "language": {
+        "application": "en",
+        "chat_content": "en"
+    }
+}
