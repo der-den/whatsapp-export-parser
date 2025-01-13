@@ -13,6 +13,10 @@ from meta_parser import MetaParser
 from languages import load_language, DEFAULT_LANGUAGE
 import utils
 
+# Global language variables
+app_lang = None
+content_lang = None
+
 def load_config():
     """Load configuration from config.json"""
     config_path = os.path.join(os.path.dirname(__file__), 'config.json')
@@ -20,46 +24,58 @@ def load_config():
         with open(config_path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        return {
-            "audio": {
-                "transcription_enabled": True,
-                "whisper_model": "medium"
-            },
-            "output": {
-                "include_attachments": True,
-                "max_image_width": 800,
-                "max_image_height": 600
-            },
-            "language": {
-                "application": DEFAULT_LANGUAGE,
-                "chat_content": DEFAULT_LANGUAGE
-            }
-        }
+        return False
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Convert WhatsApp chat export to PDF')
-    parser.add_argument('input', help='Input file path (ZIP or TXT)')
-    parser.add_argument('--debug', action='store_true', help='Enable debug output')
-    parser.add_argument('--device-owner', help='Name of the device owner in the chat')
-    parser.add_argument('--output', help='Output directory path (optional)')
-    parser.add_argument('--headertext', help='Custom text for the header of each page')
-    parser.add_argument('--footertext', help='Custom text for the footer of each page')
-    parser.add_argument('--zip-stats-only', action='store_true', help='Only print ZIP stats and exit')
-    parser.add_argument('--stats-only', action='store_true', help='Only print statistics and exit')
-    parser.add_argument('-na', '--no-attachments', action='store_true', help='Do not include attachments in the PDF report')
-    parser.add_argument('--app-lang', type=str, help='Application language (overrides config setting)')
-    parser.add_argument('--content-lang', type=str, help='Chat content language (overrides config setting)')
+    # Use the global language for argument parsing
+    global app_lang
+    
+    parser = argparse.ArgumentParser(description=app_lang.get('argparse', 'description'))
+    parser.add_argument('input', help=app_lang.get('argparse', 'input'))
+    parser.add_argument('--debug', action='store_true', help=app_lang.get('argparse', 'debug'))
+    parser.add_argument('--device-owner', help=app_lang.get('argparse', 'device_owner'))
+    parser.add_argument('--output', help=app_lang.get('argparse', 'output'))
+    parser.add_argument('--headertext', help=app_lang.get('argparse', 'headertext'))
+    parser.add_argument('--footertext', help=app_lang.get('argparse', 'footertext'))
+    parser.add_argument('--zip-stats-only', action='store_true', help=app_lang.get('argparse', 'zip_stats_only'))
+    parser.add_argument('--stats-only', action='store_true', help=app_lang.get('argparse', 'stats_only'))
+    parser.add_argument('-na', '--no-attachments', action='store_true', help=app_lang.get('argparse', 'no_attachments'))
+    parser.add_argument('--app-lang', type=str, help=app_lang.get('argparse', 'app_lang'))
+    parser.add_argument('--content-lang', type=str, help=app_lang.get('argparse', 'content_lang'))
     
     return parser.parse_args()
 
 def main():
-    args = parse_args()
+    # Load config first to get default language settings
     config = load_config()
+    if config is False:
+        print("Error: config.json not found")
+        return 1
+        
+    # Initialize global languages with defaults from config
+    global app_lang, content_lang
+    app_lang = load_language(config["language"]["application"])
+    content_lang = load_language(config["language"]["chat_content"])
+
+    # Now parse args (which will use app_lang)
+    args = parse_args()
     
-    # Load language settings (command line args override config)
-    app_lang = load_language(args.app_lang if args.app_lang else config["language"]["application"])
-    content_lang = load_language(args.content_lang if args.content_lang else config["language"]["chat_content"])
+    # Override languages if specified in command line args
+    if args.app_lang:
+        app_lang = load_language(args.app_lang)
+    if args.content_lang:
+        content_lang = load_language(args.content_lang)
+
+    # read app version number from file 'version'
+    with open('version', 'r') as f:
+        version = f.read().strip()
     
+    # Print application info
+    print(f"Whatsapp Chat Export to PDF, v{version}")
+    print('==========================')
+    print(f"Application language: {app_lang.name}")
+    print(f"Chat content language: {content_lang.name}")
+
     # Enable debug output if requested
     debug_enabled = False
     if args.debug:
@@ -75,10 +91,9 @@ def main():
         zip_handler = None
         if args.input.lower().endswith('.zip'):
             try:
-                zip_handler = ZipHandler(args.input)
+                zip_handler = ZipHandler(args.input, app_lang)
                 
-                # Print ZIP stats if requested
-                zip_handler.print_stats()
+                
             except FileNotFoundError as e:
                 print(app_lang.get('errors', 'file_not_found').format(str(e)))
                 if debug_enabled:
@@ -98,30 +113,29 @@ def main():
                     utils.close_debug_file()  # Close debug file on error
                 return 1
                 
-            if not zip_handler.chat_file:
-                print(app_lang.get('errors', 'no_chat_file'))
-                if debug_enabled:
-                    utils.close_debug_file()  # Close debug file on error
-                return 1
-                
-            # Extract chat file path
-            chat_file = zip_handler.chat_file
-            
-            if args.zip_stats_only:
-                if debug_enabled:
-                    utils.close_debug_file()  # Close debug file on exit
-                return 0
-            
             # Extract ZIP contents
             try:
-                zip_handler.extract()
+                zip_handler.unpack_zip()
             except ValueError as e:
                 print(app_lang.get('errors', 'extraction_failed').format(str(e)))
                 if debug_enabled:
                     utils.close_debug_file()  # Close debug file on error
                 return 1
 
-        import utils
+            # Find chat file
+            chat_file = zip_handler.find_chat_file()
+            if not chat_file:
+                print(app_lang.get('errors', 'no_chat_file'))
+                if debug_enabled:
+                    utils.close_debug_file()  # Close debug file on error
+                return 1
+        
+            
+            if args.zip_stats_only:
+                if debug_enabled:
+                    utils.close_debug_file()  # Close debug file on exit
+                return 0
+            
         utils.debug_print("\n\n\n=== Parsing chat file ===\n\n\n")
 
         # Initialize parser and parse messages
@@ -160,7 +174,6 @@ def main():
                 utils.close_debug_file()  # Close debug file on exit
             return 0
             
-        import utils
         utils.debug_print("\n\n\n=== Processing meta information ===\n\n\n")
 
         # Process meta information (video previews, screenshots)
@@ -185,7 +198,6 @@ def main():
             input_path = Path(args.input)
             output_path = str(input_path.with_suffix('.pdf'))
         
-        import utils
         utils.debug_print("\n\n\n=== Generating PDF ===\n\n\n")
 
         # Generate PDF
@@ -210,7 +222,6 @@ def main():
                 zip_handler.cleanup()  # Show stats and cleanup files
             
         if debug_enabled:
-            import utils
             utils.close_debug_file()  # Close debug file before exiting
         return 0
         
@@ -221,14 +232,12 @@ def main():
         return 1
     except Exception as e:
         if debug_enabled:
-            import utils
             import traceback
             traceback.print_exc()
         
         print(app_lang.get('errors', 'general').format(str(e)))
         
         if debug_enabled:
-            import utils
             utils.close_debug_file()  # Close debug file on error
         return 1
 

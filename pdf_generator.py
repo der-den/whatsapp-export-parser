@@ -439,6 +439,61 @@ class PDFGenerator:
                         print(f"Error processing image: {str(e)}", file=sys.stderr)
                         error_text = f"[Error loading image: {str(e)}]"
                         elements.append(Paragraph(error_text, self.styles['Normal']))
+                
+                # Handle stickers
+                if metadata.get('type') == 'sticker' and not self.no_attachments:
+                    # Remove invisible characters from filename before processing
+                    clean_filename = ''.join(c for c in metadata.get('filename', message.attachment_file) if c.isprintable()).strip()
+                    full_path = self._get_full_path(clean_filename)
+                    
+                    if os.path.exists(full_path):
+                        # Scale the sticker image
+                        max_width = 150  # Smaller max size for stickers
+                        max_height = 150
+                        scaled_width, scaled_height = self._scale_image(full_path, max_width, max_height)
+                        
+                        img = Image(full_path, width=scaled_width, height=scaled_height)
+                        
+                        # Format metadata text for sticker
+                        meta_text = [
+                            f"Sticker: {metadata.get('filename', message.attachment_file)}",
+                            f"Size: {metadata.get('size_bytes', 0) / 1024:.1f} KB",
+                            f"MD5: {metadata.get('md5_hash', 'N/A')}",
+                            f"Sender:\n {message.sender}\n",
+                            f"Attachment count: {metadata.get('attachment_number', 0)}"
+                        ]
+                        meta_para = Paragraph('<br/>'.join(meta_text), self.styles['Normal'])
+                        
+                        # Create table with sticker and metadata
+                        table = Table(
+                            [[img, meta_para]],
+                            colWidths=[scaled_width, A4[0] - scaled_width - 72],
+                            style=TableStyle([
+                                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                                ('LEFTPADDING', (0,0), (0,0), 0),
+                                ('RIGHTPADDING', (0,0), (0,0), 0),
+                                ('TOPPADDING', (0,0), (0,0), 0),
+                                ('BOTTOMPADDING', (0,0), (0,0), 0),
+                                ('LEFTPADDING', (1,0), (1,0), 20),
+                                ('RIGHTPADDING', (1,0), (1,0), 6),
+                                ('GRID', (0,0), (0,0), 1, colors.black),
+                            ])
+                        )
+                        elements.append(table)
+                        elements.append(Spacer(1, 15))
+            except Exception as e:
+                print(f"Error processing sticker: {str(e)}", file=sys.stderr)
+                error_text = f"[Error loading sticker: {str(e)}]"
+                elements.append(Paragraph(error_text, self.styles['Normal']))
+                
+        # Handle videos
+        if message.is_attachment and message.exists_in_export:
+            debug_print(f"Loading attachment: {message.attachment_file}", component="pdf")
+            
+            try:
+                metadata = json.loads(message.content)
+                
+                # Handle video attachments
                 if metadata.get('type') == 'video' and not self.no_attachments:
                     try:
                         # Get the preview image path from metadata

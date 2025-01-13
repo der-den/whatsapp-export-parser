@@ -9,7 +9,8 @@ import tempfile
 import shutil
 
 class ZipHandler:
-    def __init__(self, zip_file_path: str):
+    def __init__(self, zip_file_path: str, app_lang):
+        self.app_lang = app_lang
         self.zip_file_path = str(Path(zip_file_path).resolve())
         self.extract_path: Optional[str] = None
         self.media_files: List[str] = []
@@ -24,7 +25,7 @@ class ZipHandler:
         self._failed_lookups = 0
 
     def _normalize_filename(self, filename: str) -> str:
-        """Normalize filename by removing emoji and special characters for comparison"""
+        """Normalize filename of attachment files by removing emoji and special characters for comparison"""
         #debug_print(f"\n=== Normalizing filename ===", component="zip")
         #debug_print(f"Input filename: '{filename}'", component="zip")
         
@@ -76,6 +77,12 @@ class ZipHandler:
                     content_count = len(zip_ref.namelist())
             except zipfile.BadZipFile as e:
                 raise ValueError(f"Corrupted ZIP file: {str(e)}")
+            
+            print("ZIP name:", zip_name)
+            print("ZIP size:", format_size(zip_size))
+            print("ZIP date:", zip_date.strftime('%d.%m.%Y %H:%M:%S'))
+            print("ZIP MD5:", self.md5_hash)
+            print("ZIP content count:", content_count)
             
             debug_print("ZIP name:", zip_name, component="zip")
             debug_print("ZIP size:", format_size(zip_size), component="zip")
@@ -190,6 +197,15 @@ class ZipHandler:
 
     def show_statistics(self):
         """Show ZIP handler statistics"""
+        # Direct output
+        print("\nZIP Handler Statistics:")
+        print(f"Total files processed: {self._total_files}")
+        print(f"Attachment lookups: {self._attachment_lookups}")
+        print(f"Exact matches: {self._exact_matches}")
+        print(f"Partial matches: {self._partial_matches}")
+        print(f"Failed lookups: {self._failed_lookups}")
+
+        # Debug output
         debug_print("\nZIP Handler Statistics:", component="zip")
         debug_print(f"Total files processed: {self._total_files}", component="zip")
         debug_print(f"Attachment lookups: {self._attachment_lookups}", component="zip")
