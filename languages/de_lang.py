@@ -50,11 +50,21 @@ LANG_STRINGS = {
     },
     'errors': {
         'file_not_found': 'Datei nicht gefunden: {}',
-        'zip_error': 'Fehler beim Verarbeiten der ZIP-Datei: {}',
-        'general': 'Ein Fehler ist aufgetreten: {}',
-        'no_chat_file': 'Keine Chat-Datei im ZIP-Archiv gefunden',
-        'extraction_failed': 'Fehler beim Extrahieren des ZIP-Archivs: {}',
-        'no_messages_found': 'Keine Nachrichten in der Chat-Datei gefunden',
-        'interrupted': 'Vorgang vom Benutzer unterbrochen'
+        'zip_error': 'ZIP-Fehler: {}',
+        'general': 'Fehler: {}'
+    },
+    'argparse': {
+        'description': 'WhatsApp-Chat-Export in PDF konvertieren',
+        'input': 'Eingabedateipfad (ZIP oder TXT)',
+        'debug': 'Debug-Ausgabe aktivieren',
+        'device_owner': 'Name des Gerätebesitzers im Chat',
+        'output': 'Ausgabeverzeichnispfad (optional)',
+        'headertext': 'Benutzerdefinierter Text für die Kopfzeile jeder Seite',
+        'footertext': 'Benutzerdefinierter Text für die Fußzeile jeder Seite',
+        'zip_stats_only': 'Nur ZIP-Statistiken anzeigen und beenden',
+        'stats_only': 'Nur Statistiken über den Chat-Inhalt anzeigen und beenden',
+        'no_attachments': 'Keine Anhänge in den PDF-Bericht aufnehmen',
+        'app_lang': 'Anwendungssprache (überschreibt Konfigurationseinstellung)',
+        'content_lang': 'Chat-Inhaltssprache (überschreibt Konfigurationseinstellung)'
     }
 }
