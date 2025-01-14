@@ -8,6 +8,7 @@ import hashlib
 import shutil
 import json
 import warnings
+import torch
 from pathlib import Path
 from PIL import Image
 from mutagen import File as MutagenFile
@@ -139,17 +140,25 @@ class MetaParser:
         
         import whisper
         
+        # Determine device
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        debug_print(f"Using device: {device} for transcription", component="meta")
+        
+        # Suppress the weights_only warning - this will be addressed in future Whisper versions
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', category=FutureWarning, 
                                  message='.*torch.load.*weights_only=False.*')
-            model = whisper.load_model(model_name)
+            model = whisper.load_model(model_name, device=device)
         
         self.current_audio_file += 1
         debug_print(f"Transcribing audio: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
 
         try:
-            # Transcribe audio
-            transcribe_result = model.transcribe(file_path)
+            # Transcribe audio with GPU acceleration if available
+            transcribe_result = model.transcribe(
+                file_path,
+                fp16=torch.cuda.is_available()  # Enable FP16 if CUDA is available
+            )
             
             if not transcribe_result or "text" not in transcribe_result:
                 debug_print(f"Warning: No transcription result for {audio_file}")
@@ -164,7 +173,8 @@ class MetaParser:
                 "model": f"whisper-{model_name}",
                 "language": transcribe_result.get("language", "unknown"),
                 "segments": transcribe_result.get("segments", []),
-                "transcribed_at": datetime.now().isoformat()
+                "transcribed_at": datetime.now().isoformat(),
+                "device_used": device
             }
             
             result["transcription"] = transcription_meta
