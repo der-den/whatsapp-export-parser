@@ -387,6 +387,32 @@ class MetaParser:
             print(f"Error extracting document metadata: {e}")
             return {"error": str(e)}
 
+    def _get_sticker_metadata(self, sticker_file: str) -> dict:
+        """
+        Extracts metadata from a sticker file (WebP).
+        
+        Args:
+            sticker_file: Path to the sticker file
+            
+        Returns:
+            dict: Metadata of the sticker file
+        """
+        try:
+            file_path = os.path.join(self.zip_handler.extract_path, sticker_file)
+            self.attachment_counter += 1  # Increment counter
+            metadata = {
+                "type": "sticker",
+                "filename": sticker_file,
+                "attachment_number": self.attachment_counter,
+                "format": "webp",
+                "size_bytes": os.path.getsize(file_path),
+                "md5_hash": self._calculate_md5(file_path)
+            }
+            return metadata
+        except Exception as e:
+            print(f"Error extracting sticker metadata: {e}")
+            return {"error": str(e)}
+
     def _take_video_frames(self, video_file: str) -> Optional[Tuple[str, str]]:
         """
         Extrahiert 4 Frames aus einem Video (bei 20%, 40%, 60% und 80% der Gesamtlänge)
@@ -642,15 +668,10 @@ class MetaParser:
             if message.content_type == ContentType.STICKER and message.attachment_file:
                 debug_print(f"Processing sticker: {message.attachment_file}", component="meta")
                 try:
-                    file_path = os.path.join(self.zip_handler.extract_path, message.attachment_file)
-                    metadata = {
-                        "type": "sticker",
-                        "filename": message.attachment_file,
-                        "format": "webp",
-                        "size_bytes": os.path.getsize(file_path)
-                    }
-                    message.content = json.dumps(metadata, ensure_ascii=False)
-                    debug_print(f"Added metadata for sticker: {message.attachment_file}", component="meta")
+                    metadata = self._get_sticker_metadata(message.attachment_file)
+                    if metadata and "error" not in metadata:
+                        message.content = json.dumps(metadata, ensure_ascii=False)
+                        debug_print(f"Added metadata for sticker: {message.attachment_file}", component="meta")
                 except Exception as e:
                     print(f"Error processing sticker: {e}")
                 self.preview_success[ContentType.STICKER] = self.preview_success.get(ContentType.STICKER, 0) + 1
@@ -681,12 +702,7 @@ class MetaParser:
         print("\n\nProcessing Summary:")
         for content_type, count in self.preview_success.items():
             print(f"  {content_type.name}: {count}")
-        print(f"Processed {self.preview_success[ContentType.IMAGE]} images")
-        print(f"Processed {self.preview_success[ContentType.VIDEO]} videos")
-        print(f"Processed {self.preview_success[ContentType.DOCUMENT]} documents")
-        print(f"Processed {self.preview_success.get(ContentType.STICKER, 0)} stickers")
-        print(f"Processed {self.preview_success[ContentType.LINK]} links")
-
+        
         if self.transcription_stats["transcoded"] > 0 or self.transcription_stats["errors"] > 0:
             print(f"\nAudio Processing Summary:")
             print(f"Total audio files processed: {self.preview_success[ContentType.AUDIO]}")

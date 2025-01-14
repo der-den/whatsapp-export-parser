@@ -2,3 +2,5 @@ reportlab
 Pillow>=10.0.0
 emoji
 mutagen>=1.47.0
+torch>=2.5.1
+openai-whisper

@@ -1,15 +1,21 @@
 {
     "audio": {
-        "transcription_enabled": false,
+        "transcription_enabled": true,
         "whisper_model": "medium"
     },
     "output": {
         "include_attachments": true,
         "max_image_width": 800,
-        "max_image_height": 600
+        "max_image_height": 600,
+        "sticker": {
+            "max_width": 80,
+            "max_height": 80,
+            "margin_left": 30,
+            "padding_right": 20
+        }
     },
     "language": {
-        "application": "en",
-        "chat_content": "en"
+        "application": "de",
+        "chat_content": "de"
     }
 }
