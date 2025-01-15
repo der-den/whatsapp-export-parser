@@ -201,6 +201,20 @@ class ChatParser:
             debug_print(f"MIME type: {mime_type}", component="chat")
             debug_print(f"Exists in export: {exists_in_export}", component="chat")
         
+        # Check for sticker files first
+        sticker_marker = self._is_sticker_attachment_marker(content)
+        if sticker_marker:
+            attachment_file = sticker_marker
+            exists_in_export = self.zip_handler.file_exists(attachment_file)
+            if exists_in_export and is_valid_sticker(os.path.join(self.zip_handler.extract_path, attachment_file)):
+                content_type = ContentType.STICKER
+            
+            if is_attachment and not exists_in_export:
+                self.statistics.missing_attachments += 1
+                self.statistics.missing_files.append(attachment_file)
+            
+            return content_type, check_webp_animation(os.path.join(self.zip_handler.extract_path, attachment_file)) if exists_in_export else False
+        
         # Check for audio files first
         audio_marker = self._is_audio_attachment_marker(content)
         if audio_marker or (mime_type and mime_type.startswith('audio/')):
@@ -381,6 +395,20 @@ class ChatParser:
         match = re.search(pattern, text, re.IGNORECASE)
         return match.group(0) if match else None
 
+    def _is_sticker_attachment_marker(self, text: str) -> Optional[str]:
+        """
+        Check if the text contains a sticker attachment marker and return it.
+        
+        iOS Format: 00000232-STICKER-2022-07-08-23-16-44.webp (8 digits-STICKER-YYYY-MM-DD-HH-MM-SS.webp)
+        Android Format: STK-20220518-WA0023.webp (STK-YYYYMMDD-WA4or5digits.webp)
+        
+        Returns:
+            str | None: The found sticker attachment marker or None if none was found
+        """
+        pattern = r'(?:\d{8}-STICKER-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.webp|STK-\d{8}-WA\d{4,5}\.webp)'
+        match = re.search(pattern, text, re.IGNORECASE)
+        return match.group(0) if match else None
+
     def parse_message_line(self, line: str) -> Optional[ChatMessage]:
         """Parse a single line from the chat file into a ChatMessage object"""
         try:
@@ -426,16 +454,24 @@ class ChatParser:
                         is_attachment = True
                         debug_print(f"Found attachment marker: {attachment_file}", component="chat")
                     else:
-                        # Check if the content matches our other attachment patterns
-                        attachment_file = (
-                            self._is_image_attachment_marker(content) or
-                            self._is_video_attachment_marker(content) or
-                            self._is_audio_attachment_marker(content) or
-                            self._is_document_attachment_marker(content)
-                        )
-                        if attachment_file:
+                        # Check for Android attachment format
+                        android_match = re.match(r'‎?([^\s]+)\s*\(Datei angehängt\)', content)
+                        if android_match:
+                            attachment_file = android_match.group(1)
                             is_attachment = True
-                            debug_print(f"Found attachment pattern: {attachment_file}", component="chat")
+                            debug_print(f"Found Android attachment: {attachment_file}", component="chat")
+                        else:
+                            # Check if the content matches our other attachment patterns
+                            attachment_file = (
+                                self._is_image_attachment_marker(content) or
+                                self._is_video_attachment_marker(content) or
+                                self._is_audio_attachment_marker(content) or
+                                self._is_document_attachment_marker(content) or
+                                self._is_sticker_attachment_marker(content)
+                            )
+                            if attachment_file:
+                                is_attachment = True
+                                debug_print(f"Found attachment pattern: {attachment_file}", component="chat")
             except ValueError as e:
                 debug_print(f"Error extracting attachment: {e}", component="chat")
             
