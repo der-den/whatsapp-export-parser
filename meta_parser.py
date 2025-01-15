@@ -21,6 +21,7 @@ from utils import debug_print
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 import whisper
+import time
 
 """
 Erstellt bzw Exrahiert für/von Attachments weitere Informationen und fügte diese als JSON Objekte der content variable hinzu. 
@@ -41,6 +42,33 @@ class MetaParser:
         
         # Load configuration
         self.config = self._load_config()
+        
+        # Initialize Whisper model if transcription is enabled
+        self.model = None
+        self.device = None
+        if self.config["audio"]["transcription_enabled"]:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"[Whisper] Using device: {self.device} for transcription")
+            
+            if torch.cuda.is_available():
+                print(f"[Whisper] GPU device: {torch.cuda.get_device_name(0)}")
+                print(f"[Whisper] CUDA version: {torch.version.cuda}")
+                print(f"[Whisper] Available GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+            
+            # Get the model name from config
+            model_name = self.config["audio"]["whisper_model"]
+            
+            # Load the model
+            start_time = time.time()
+            print(f"[Whisper] Loading model: {model_name}")
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=FutureWarning, 
+                                     message='.*torch.load.*weights_only=False.*')
+                self.model = whisper.load_model(model_name, device=self.device)
+            
+            load_time = time.time() - start_time
+            model_size = sum(p.numel() for p in self.model.parameters()) / 1e6
+            print(f"[Whisper] Model loaded in {load_time:.2f} seconds. Size: {model_size:.1f}M parameters")
         
     def _load_config(self) -> dict:
         """Load configuration from config.json"""
@@ -79,7 +107,7 @@ class MetaParser:
                     file_hash.update(chunk)
             return file_hash.hexdigest()
         except Exception as e:
-            print(f"Error calculating MD5 hash: {e}")
+            debug_print(f"Error calculating MD5 hash: {e}", component="meta")
             return ""
 
     def _get_meta_directory(self) -> str:
@@ -96,7 +124,7 @@ class MetaParser:
         os.makedirs(transcribe_dir, exist_ok=True)
         
         debug_print(f"Creating meta directory: {meta_dir}", component="meta")
-        
+
         return meta_dir
 
     def _transcribe_audio(self, file_path: str, audio_file: str) -> Dict:
@@ -122,46 +150,59 @@ class MetaParser:
             result["error_type"] = "transcription_disabled"
             return result
 
-        # Get the model name from config
-        model_name = self.config["audio"]["whisper_model"]
-        
         # Check for existing transcription
         meta_dir = self._get_meta_directory()
-        json_output = os.path.join(meta_dir, f"{audio_file}.transcription.{model_name}.json")
+        model_name = self.config["audio"]["whisper_model"]
         
+        # Create a more detailed filename with model info and attachment ID
+        transcribe_dir = os.path.join(meta_dir, "transcribe")
+        os.makedirs(transcribe_dir, exist_ok=True)
+        
+        # Extract model info
+        model_info = f"whisper-{model_name}"
+        
+        # Create filename with attachment number
+        base_name = os.path.splitext(audio_file)[0]
+        json_filename = f"{base_name}.att{self.attachment_counter}.{model_info}.json"
+        json_output = os.path.join(transcribe_dir, json_filename)
+        
+        # Check if transcription file already exists
         if os.path.exists(json_output):
-            try:
-                with open(json_output, 'r', encoding='utf-8') as f:
-                    existing_result = json.load(f)
+            print(f"Found existing transcription for {audio_file}")
+            debug_print(f"Loading existing transcription for {audio_file}", component="meta")
+            with open(json_output, 'r', encoding='utf-8') as f:
+                existing_result = json.load(f)
+                if "transcription" in existing_result:
+                    text = existing_result["transcription"].get("text", "")
+                    model = existing_result["transcription"].get("model", f"whisper-{model_name}")
+                    language = existing_result["transcription"].get("language", "unknown")
+                    result = {
+                        "success": True,
+                        "transcription": {
+                            "text": text,
+                            "model": model,
+                            "language": language,
+                            "transcribed_at": existing_result["transcription"].get("transcribed_at", datetime.now().isoformat())
+                        }
+                    }
                     self.transcription_stats["loaded_existing"] += 1
-                    return existing_result
-            except:
-                pass  # If loading fails, proceed with new transcription
-        
-        import whisper
-        
-        # Determine device
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        debug_print(f"Using device: {device} for transcription", component="meta")
-        
-        # Suppress the weights_only warning - this will be addressed in future Whisper versions
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=FutureWarning, 
-                                 message='.*torch.load.*weights_only=False.*')
-            model = whisper.load_model(model_name, device=device)
+                    return result
         
         self.current_audio_file += 1
-        debug_print(f"Transcribing audio: {audio_file} ({self.current_audio_file}/{self.total_audio_files})")
+        debug_print(f"Transcribing audio: {audio_file} ({self.current_audio_file}/{self.total_audio_files})", component="meta")
 
         try:
             # Transcribe audio with GPU acceleration if available
-            transcribe_result = model.transcribe(
+            start_time = time.time()
+            transcribe_result = self.model.transcribe(
                 file_path,
                 fp16=torch.cuda.is_available()  # Enable FP16 if CUDA is available
             )
+            transcribe_time = time.time() - start_time
+            print(f"[Whisper] Transcription completed in {transcribe_time:.2f} seconds for {audio_file}")
             
             if not transcribe_result or "text" not in transcribe_result:
-                debug_print(f"Warning: No transcription result for {audio_file}")
+                debug_print(f"Warning: No transcription result for {audio_file}", component="meta")
                 result["error"] = "No transcription result"
                 result["error_type"] = "empty_result"
                 self.transcription_stats["errors"] += 1
@@ -174,7 +215,7 @@ class MetaParser:
                 "language": transcribe_result.get("language", "unknown"),
                 "segments": transcribe_result.get("segments", []),
                 "transcribed_at": datetime.now().isoformat(),
-                "device_used": device
+                "device_used": self.device
             }
             
             result["transcription"] = transcription_meta
@@ -189,14 +230,14 @@ class MetaParser:
             
         except RuntimeError as e:
             error_msg = f"CUDA/GPU error while transcribing {audio_file}: {str(e)}"
-            debug_print(error_msg)
+            debug_print(error_msg, component="meta")
             result["error"] = error_msg
             result["error_type"] = "cuda_error"
             self.transcription_stats["errors"] += 1
             return result
         except Exception as e:
             error_msg = f"Error transcribing {audio_file}: {str(e)}"
-            debug_print(error_msg)
+            debug_print(error_msg, component="meta")
             result["error"] = error_msg
             result["error_type"] = "general_error"
             self.transcription_stats["errors"] += 1
@@ -242,14 +283,13 @@ class MetaParser:
                     }
             except Exception as e:
                 debug_print(f"Error during transcription: {e}", component="meta")
-                print(f"Error during transcription: {e}")
             
             # Remove None values
             metadata = {k: v for k, v in metadata.items() if v is not None}
             
             return metadata
         except Exception as e:
-            print(f"Error extracting audio metadata: {e}")
+            debug_print(f"Error extracting audio metadata: {e}", component="meta")
             return {"error": str(e)}
 
     def _get_image_metadata(self, image_file: str) -> dict:
@@ -279,7 +319,7 @@ class MetaParser:
                 }
                 return metadata
         except Exception as e:
-            print(f"Error extracting image metadata: {e}")
+            debug_print(f"Error extracting image metadata: {e}", component="meta")
             return {"error": str(e)}
 
     def _get_video_metadata(self, video_file: str, preview_paths: Optional[Tuple[str, str]] = None) -> dict:
@@ -320,7 +360,7 @@ class MetaParser:
             cap.release()
             return metadata
         except Exception as e:
-            print(f"Error extracting video metadata: {e}")
+            debug_print(f"Error extracting video metadata: {e}", component="meta")
             return {"error": str(e)}
 
     def _get_document_metadata(self, doc_file: str) -> dict:
@@ -394,7 +434,7 @@ class MetaParser:
             
             return metadata
         except Exception as e:
-            print(f"Error extracting document metadata: {e}")
+            debug_print(f"Error extracting document metadata: {e}", component="meta")
             return {"error": str(e)}
 
     def _get_sticker_metadata(self, sticker_file: str) -> dict:
@@ -420,7 +460,7 @@ class MetaParser:
             }
             return metadata
         except Exception as e:
-            print(f"Error extracting sticker metadata: {e}")
+            debug_print(f"Error extracting sticker metadata: {e}", component="meta")
             return {"error": str(e)}
 
     def _take_video_frames(self, video_file: str) -> Optional[Tuple[str, str]]:
@@ -462,13 +502,13 @@ class MetaParser:
             cap = cv2.VideoCapture(video_path)
             
             if not cap.isOpened():
-                print(f"Error: Could not open video {video_file}")
+                debug_print(f"Error: Could not open video {video_file}", component="meta")
                 return None
             
             # Hole Video-Informationen
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             if total_frames == 0:
-                print(f"Error: Video {video_file} has no frames")
+                debug_print(f"Error: Video {video_file} has no frames", component="meta")
                 return None
             
             # Berechne Frame-Positionen (20%, 40%, 60%, 80%)
@@ -623,7 +663,10 @@ class MetaParser:
             # show progress
             if i % 100 == 0 or i == total_messages - 1:
                 progress = (i / total_messages) * 100
-                print(f"Progress: {progress:.1f}% ({i+1}/{total_messages} messages)", end='\r')
+                debug_print(f"Progress: {progress:.1f}% ({i+1}/{total_messages} messages)", component="meta")
+            
+            if message.is_attachment:
+                debug_print(f"Current Attachment Number: {self.attachment_counter}", component="meta")
 
             # Process Images
             if message.content_type.is_image and message.attachment_file:
@@ -634,7 +677,7 @@ class MetaParser:
                         message.content = json.dumps(metadata, ensure_ascii=False)
                         debug_print(f"Added metadata for image: {message.attachment_file}", component="meta")
                 except Exception as e:
-                    print(f"Error processing image: {e}")
+                    debug_print(f"Error processing image: {e}", component="meta")
                 self.preview_success[ContentType.IMAGE] = self.preview_success.get(ContentType.IMAGE, 0) + 1
         
             # Process Videos
@@ -647,7 +690,7 @@ class MetaParser:
                         message.content = json.dumps(metadata, ensure_ascii=False)
                         debug_print(f"Added metadata and preview for video: {message.attachment_file}", component="meta")
                 except Exception as e:
-                    print(f"Error taking video frames: {str(e)}", component="meta")      
+                    debug_print(f"Error taking video frames: {str(e)}", component="meta")      
                 self.preview_success[ContentType.VIDEO] = self.preview_success.get(ContentType.VIDEO, 0) + 1
         
             # Process Audio
@@ -659,7 +702,7 @@ class MetaParser:
                         message.content = json.dumps(metadata, ensure_ascii=False)
                         debug_print(f"Added metadata for audio: {message.attachment_file}", component="meta")
                 except Exception as e:
-                    print(f"Error processing audio: {e}")
+                    debug_print(f"Error processing audio: {e}", component="meta")
                 self.preview_success[ContentType.AUDIO] = self.preview_success.get(ContentType.AUDIO, 0) + 1
         
             # Process Documents
@@ -671,7 +714,7 @@ class MetaParser:
                         message.content = json.dumps(metadata, ensure_ascii=False)
                         debug_print(f"Added metadata for document: {message.attachment_file}", component="meta")
                 except Exception as e:
-                    print(f"Error processing document: {e}")
+                    debug_print(f"Error processing document: {e}", component="meta")
                 self.preview_success[ContentType.DOCUMENT] = self.preview_success.get(ContentType.DOCUMENT, 0) + 1
 
             # Process Stickers/WebP
@@ -683,7 +726,7 @@ class MetaParser:
                         message.content = json.dumps(metadata, ensure_ascii=False)
                         debug_print(f"Added metadata for sticker: {message.attachment_file}", component="meta")
                 except Exception as e:
-                    print(f"Error processing sticker: {e}")
+                    debug_print(f"Error processing sticker: {e}", component="meta")
                 self.preview_success[ContentType.STICKER] = self.preview_success.get(ContentType.STICKER, 0) + 1
 
             # Process Links
@@ -700,24 +743,25 @@ class MetaParser:
                             meta_path, report_path = screenshot_paths
                             message.content = f"{message.content}\n[Screenshot: {meta_path}]"
                             message.content += f'\n<div class="link-preview"><img src="{report_path}" alt="Screenshot of {url}" class="link-screenshot"/></div>'
-                            print(f"Created screenshot for {url}")
+                            debug_print(f"Created screenshot for {url}", component="meta")
                             self.preview_success[ContentType.LINK] = self.preview_success.get(ContentType.LINK, 0) + 1
                         else:
-                            print(f"Failed to create screenshot for {url}")
+                            debug_print(f"Failed to create screenshot for {url}", component="meta")
                         '''
                 except Exception as e:
-                    print(f"Error processing URL: {e}", component="meta")
+                    debug_print(f"Error processing URL: {e}", component="meta")
                 self.preview_success[ContentType.LINK] = self.preview_success.get(ContentType.LINK, 0) + 1
+            
 
-        print("\n\nProcessing Summary:")
+        debug_print("\n\nProcessing Summary:", component="meta")
         for content_type, count in self.preview_success.items():
-            print(f"  {content_type.name}: {count}")
+            debug_print(f"  {content_type.name}: {count}", component="meta")
         
         if self.transcription_stats["transcoded"] > 0 or self.transcription_stats["errors"] > 0:
-            print(f"\nAudio Processing Summary:")
-            print(f"Total audio files processed: {self.preview_success[ContentType.AUDIO]}")
-            print(f"- Successfully transcribed: {self.transcription_stats['transcoded']}")
-            print(f"- Loaded from existing: {self.transcription_stats['loaded_existing']}")
-            print(f"- Failed transcriptions: {self.transcription_stats['errors']}")
+            debug_print(f"\nAudio Processing Summary:", component="meta")
+            debug_print(f"Total audio files processed: {self.preview_success[ContentType.AUDIO]}", component="meta")
+            debug_print(f"- Successfully transcribed: {self.transcription_stats['transcoded']}", component="meta")
+            debug_print(f"- Loaded from existing: {self.transcription_stats['loaded_existing']}", component="meta")
+            debug_print(f"- Failed transcriptions: {self.transcription_stats['errors']}", component="meta")
 
         return self.preview_success

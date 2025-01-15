@@ -51,7 +51,9 @@ LANG_STRINGS = {
     'errors': {
         'file_not_found': 'Datei nicht gefunden: {}',
         'zip_error': 'ZIP-Fehler: {}',
-        'general': 'Fehler: {}'
+        'general': 'Fehler: {}',
+        'extraction_failed': 'Fehler beim Entpacken der ZIP-Datei: {}',
+        'no_chat_file': 'Keine Chat-Datei in der ZIP-Datei gefunden'
     },
     'argparse': {
         'description': 'WhatsApp-Chat-Export in PDF konvertieren',

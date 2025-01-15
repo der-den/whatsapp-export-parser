@@ -200,15 +200,21 @@ class ChatParser:
             exists_in_export = bool(self.zip_handler.find_attachment_file(attachment_file))
             debug_print(f"MIME type: {mime_type}", component="chat")
             debug_print(f"Exists in export: {exists_in_export}", component="chat")
+            
         
         # Check for sticker files first
         sticker_marker = self._is_sticker_attachment_marker(content)
+        debug_print(f"Sticker marker: {sticker_marker}", component="chat")
         if sticker_marker:
             attachment_file = sticker_marker
-            exists_in_export = self.zip_handler.file_exists(attachment_file)
+            exists_in_export = self.zip_handler.find_attachment_file(attachment_file) is not None
+            debug_print(f"Checking sticker at path: {os.path.join(self.zip_handler.extract_path, attachment_file)}", component="chat")
             if exists_in_export and is_valid_sticker(os.path.join(self.zip_handler.extract_path, attachment_file)):
                 content_type = ContentType.STICKER
-            
+                debug_print(f"Sticker file detected: {debug_info} -> {content_type}", component="chat")
+            else:
+                debug_print(f"Sticker file not valid: {debug_info} -> {content_type}", component="chat")
+
             if is_attachment and not exists_in_export:
                 self.statistics.missing_attachments += 1
                 self.statistics.missing_files.append(attachment_file)
@@ -502,6 +508,7 @@ class ChatParser:
                         try:
                             size = os.path.getsize(file_path)
                             self.statistics.attachment_sizes[content_type] += size
+                            debug_print(f"Attachment size: {size} bytes", component="chat")
                         except OSError:
                             debug_print(f"Error getting file size: {file_path}", component="chat")
                     

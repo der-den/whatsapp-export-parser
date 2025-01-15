@@ -25,7 +25,7 @@ class PDFGenerator:
                  unzip_dir: Optional[str] = None, header_text: Optional[str] = None,
                  footer_text: Optional[str] = None, input_filename: Optional[str] = None,
                  zip_size: Optional[int] = None, zip_md5: Optional[str] = None,
-                 no_attachments: bool = False):
+                 no_attachments: bool = False, config: Optional[Dict] = None):
         self.output_path = output_path
         self.device_owner = device_owner
         self.unzip_dir = unzip_dir
@@ -35,6 +35,7 @@ class PDFGenerator:
         self.zip_size = zip_size
         self.zip_md5 = zip_md5
         self.no_attachments = no_attachments
+        self.config = config
         self.font_path = os.path.join(os.path.dirname(__file__), "fonts")
         self.main_font = "DejaVuSans"
         self.emoji_font = "Symbola"
@@ -66,7 +67,7 @@ class PDFGenerator:
         
         # Definiere Farben für den Hintergrund der Nachrichten
         self.owner_color = colors.Color(0.97, 0.99, 0.97)  # Sehr helles Grün
-        self.other_color = colors.Color(0.97, 0.99, 0.97)  # Sehr helles Grau
+        self.other_color = colors.Color(0.96, 0.96, 0.96)  # Sehr helles Grau
         
         self._setup_styles()
         
@@ -267,6 +268,12 @@ class PDFGenerator:
                     attachment_num = metadata.get('attachment_number', 0)
                     safe_content = f"Audio attachment: {filename} ({size_mb:.1f} MB) #{attachment_num}"
                     debug_print(f"Audio metadata: {metadata}", component="pdf")
+                if metadata.get('type') == 'sticker':
+                    filename = metadata.get('filename', message.attachment_file)
+                    size_kb = metadata.get('size_bytes', 0) / 1024  # Convert to KB
+                    attachment_num = metadata.get('attachment_number', 0)
+                    safe_content = f"Sticker attachment: {filename} ({size_kb:.1f} KB) #{attachment_num}"
+                    debug_print(f"Sticker metadata: {metadata}", component="pdf")
             except:
                 # If metadata parsing fails, just show the attachment file
                 safe_content = f"Attachment: {message.attachment_file}"
@@ -340,7 +347,8 @@ class PDFGenerator:
                             f"Duration: {metadata.get('duration_seconds', 'N/A'):.1f} seconds",
                             f"Size: {metadata.get('size_bytes', 0) / 1024**2:.1f} MB",
                             f"MD5: {metadata.get('md5_hash', 'N/A')}",
-                            f"Sender: {message.sender}"
+                            f"Sender:\n {message.sender}\n",
+                            f"Attachment count: {metadata.get('attachment_number', 0)}"
                         ]
                         
                         # Add transcription if available
@@ -352,7 +360,7 @@ class PDFGenerator:
                                 f"Language: {trans.get('language', 'unknown')}",
                                 f"Model: {trans.get('model', 'unknown')}",
                                 "",  # Empty line before text
-                                "Transcribed Text:",
+                                "Transcribed Text (Warning: KI generated text may be inaccurate):",
                                 trans.get('text', 'No transcription available')
                             ])
                         
@@ -397,9 +405,9 @@ class PDFGenerator:
                         full_path = self._get_full_path(clean_filename)
                         
                         if full_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                            # Create a table with two columns - image on left, metadata on right
-                            max_width = 400
-                            max_height = 400
+                            # Get image dimensions from config
+                            max_width = self.config.get("output", {}).get("max_image_width", 800)  # Default 800 if not in config
+                            max_height = self.config.get("output", {}).get("max_image_height", 600)  # Default 600 if not in config
                             scaled_width, scaled_height = self._scale_image(full_path, max_width, max_height)
                             
                             img = Image(full_path, width=scaled_width, height=scaled_height)
@@ -434,7 +442,7 @@ class PDFGenerator:
                             )
                             elements.append(table)
                             # Add space after the image
-                            elements.append(Spacer(1, 15))  # 15 points of vertical space
+                            elements.append(Spacer(1, 15))
                     except Exception as e:
                         print(f"Error processing image: {str(e)}", file=sys.stderr)
                         error_text = f"[Error loading image: {str(e)}]"
@@ -447,9 +455,15 @@ class PDFGenerator:
                     full_path = self._get_full_path(clean_filename)
                     
                     if os.path.exists(full_path):
-                        # Scale the sticker image
-                        max_width = 150  # Smaller max size for stickers
-                        max_height = 150
+                        # Get sticker layout settings from config
+                        sticker_config = self.config.get("output", {}).get("sticker", {})
+                        margin_left = sticker_config.get("margin_left", 30)  # Default 30px
+                        padding_right = sticker_config.get("padding_right", 20)  # Default 20px
+                        available_width = A4[0] - 72 - margin_left  # Account for margin in available width
+                        
+                        # Scale the sticker image based on config
+                        max_width = self.config.get("output", {}).get("sticker", {}).get("max_width", 60)  # Default to 50 if not in config
+                        max_height = self.config.get("output", {}).get("sticker", {}).get("max_height", 60)  # Default to 50 if not in config
                         scaled_width, scaled_height = self._scale_image(full_path, max_width, max_height)
                         
                         img = Image(full_path, width=scaled_width, height=scaled_height)
@@ -461,22 +475,23 @@ class PDFGenerator:
                             f"MD5: {metadata.get('md5_hash', 'N/A')}",
                             f"Sender:\n {message.sender}\n",
                             f"Attachment count: {metadata.get('attachment_number', 0)}"
+                            
                         ]
                         meta_para = Paragraph('<br/>'.join(meta_text), self.styles['Normal'])
                         
                         # Create table with sticker and metadata
                         table = Table(
                             [[img, meta_para]],
-                            colWidths=[scaled_width, A4[0] - scaled_width - 72],
+                            colWidths=[scaled_width, available_width - scaled_width],
                             style=TableStyle([
                                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                                ('LEFTPADDING', (0,0), (0,0), 0),
-                                ('RIGHTPADDING', (0,0), (0,0), 0),
+                                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                                ('LEFTPADDING', (0,0), (-1,-1), margin_left),  # Left margin from config
+                                ('RIGHTPADDING', (0,0), (0,0), 40),  # Increased right padding for sticker
                                 ('TOPPADDING', (0,0), (0,0), 0),
                                 ('BOTTOMPADDING', (0,0), (0,0), 0),
-                                ('LEFTPADDING', (1,0), (1,0), 20),
+                                ('LEFTPADDING', (1,0), (1,0), 40),  # Increased left padding for metadata
                                 ('RIGHTPADDING', (1,0), (1,0), 6),
-                                ('GRID', (0,0), (0,0), 1, colors.black),
                             ])
                         )
                         elements.append(table)

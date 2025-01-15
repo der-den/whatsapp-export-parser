@@ -2,6 +2,7 @@
 from typing import Optional, Tuple
 from pathlib import Path
 from PIL import Image
+from utils import debug_print
 
 def check_webp_animation(file_path: str) -> Tuple[bool, Optional[Tuple[int, int]]]:
     """
@@ -50,25 +51,29 @@ def check_webp_animation(file_path: str) -> Tuple[bool, Optional[Tuple[int, int]
             return False, None
             
     except Exception as e:
-        print(f"Error checking WebP animation: {str(e)}")
+        debug_print(f"Error checking WebP animation: {str(e)}", component="meta")
         return False, None
 
 def is_valid_sticker(file_path: str) -> bool:
     """
     Check if a WebP file is a valid sticker:
-    - Static stickers must be <= 100KB
-    - Animated stickers must be <= 500KB and 512x512 pixels
+    - Only check dimensions
     """
     try:
         file_size = Path(file_path).stat().st_size
-        is_animated, dimensions = check_webp_animation(file_path)
+        debug_print(f"Checking sticker file size: {file_size} bytes", component="chat")
         
-        if is_animated:
-            return (file_size <= 500 * 1024 and  # 500KB
-                    dimensions == (512, 512))
+        is_animated, dimensions = check_webp_animation(file_path)
+        debug_print(f"Sticker {file_path} is animated: {is_animated}, dimensions: {dimensions}", component="chat")
+        
+        # Only check dimensions, ignore file size
+        if dimensions and dimensions[0] <= 512 and dimensions[1] <= 512:
+            debug_print(f"Sticker validation: dimensions_ok=True (within 512x512)", component="chat")
+            return True
         else:
-            return file_size <= 100 * 1024  # 100KB
+            debug_print(f"Sticker validation: dimensions_ok=False (exceeds 512x512 or no dimensions)", component="chat")
+            return False
             
     except Exception as e:
-        print(f"Error checking sticker validity: {str(e)}")
+        debug_print(f"Error checking sticker validity: {str(e)}", component="chat")
         return False

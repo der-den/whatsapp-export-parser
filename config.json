@@ -5,8 +5,8 @@
     },
     "output": {
         "include_attachments": true,
-        "max_image_width": 800,
-        "max_image_height": 600,
+        "max_image_width": 300,
+        "max_image_height": 300,
         "sticker": {
             "max_width": 80,
             "max_height": 80,

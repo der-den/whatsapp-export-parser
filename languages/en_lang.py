@@ -52,8 +52,8 @@ LANG_STRINGS = {
         'file_not_found': 'File not found: {}',
         'zip_error': 'ZIP error: {}',
         'general': 'Error: {}',
-        'no_chat_file': 'No chat file found in ZIP archive',
-        'extraction_failed': 'Failed to extract ZIP contents: {}',
+        'extraction_failed': 'Failed to extract ZIP file: {}',
+        'no_chat_file': 'No chat file found in ZIP file',
         'no_messages_found': 'No messages found in chat file',
         'interrupted': 'Operation interrupted by user'
     },

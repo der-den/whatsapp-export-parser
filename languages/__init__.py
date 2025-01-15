@@ -23,8 +23,9 @@ def get_supported_languages() -> List[str]:
 SUPPORTED_LANGUAGES = get_supported_languages()
 
 class LanguageStrings:
-    def __init__(self, strings: Dict[str, Any]):
+    def __init__(self, strings: Dict[str, Any], name: str = DEFAULT_LANGUAGE):
         self._strings = strings
+        self.name = name
 
     def get(self, *keys: str) -> str:
         """
@@ -66,7 +67,7 @@ def load_language(lang_code: str) -> LanguageStrings:
     
     try:
         module = importlib.import_module(f'languages.{lang_code}_lang')
-        return LanguageStrings(module.LANG_STRINGS)
+        return LanguageStrings(module.LANG_STRINGS, name=lang_code)
     except ImportError:
         debug_print(f"Language module {lang_code} not found")
         if lang_code != DEFAULT_LANGUAGE:

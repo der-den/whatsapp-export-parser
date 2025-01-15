@@ -207,7 +207,8 @@ def main():
         pdf_generator = PDFGenerator(output_path, args.device_owner, 
                                    zip_handler.extract_path if zip_handler else None, 
                                    args.headertext, args.footertext, args.input,
-                                   zip_size, zip_md5, args.no_attachments)
+                                   zip_size, zip_md5, args.no_attachments,
+                                   config=config)  # Pass config to PDFGenerator
         pdf_generator.generate_pdf(messages, chat_parser.chat_members, stats)
         
         print(f"{app_lang.get('info', 'pdf_generated')}: {output_path}")
@@ -215,11 +216,7 @@ def main():
         print(f"{app_lang.get('info', 'chat_members')}: {', '.join(sorted(chat_parser.chat_members))}")
         
         # Clean up extracted files if we used a ZIP
-        if zip_handler:
-            if args.debug:
-                zip_handler.show_statistics()  # Show stats in debug mode
-            else:
-                zip_handler.cleanup()  # Show stats and cleanup files
+        zip_handler.cleanup()  # Show stats and cleanup files
             
         if debug_enabled:
             utils.close_debug_file()  # Close debug file before exiting

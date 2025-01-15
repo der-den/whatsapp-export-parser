@@ -113,10 +113,40 @@ The generated PDFs will include:
 - Attachment indicators (📎)
 - Time stamps in either 24-hour (default) or 12-hour format
 
-## Command Line Options
 
-Use the following options to customize the output:
-```bash
-python whatsapp_export_parser.py chat.zip --12h     # Use 12-hour time format
-python whatsapp_export_parser.py chat.zip --debug   # Show debug information
-python whatsapp_export_parser.py chat.zip --keep-temp # Keep temporary files
+## GPU / NIVDA support:
+Install may a litte dificult. Use at minimum the following commands:
+for APT:
+sudo apt-get install nvidia-cuda-toolkit
+sudo apt-get install python3-pytorch
+
+for Arch Linux
+sudo pacman -S cuda python-pytorch-cuda
+sudo pacman -S python-pytorch
+
+And all from requirements.txt via pip:
+
+pip install -r requirements.txt
+
+
+
+# Check its working:
+I created a whisper-test.py, which can be found in the repo.
+
+Run it at first via: python whisper-test.py
+
+If you see no errors, you can add a audio file via:
+python whisper-test.py audio.mp3/opus
+
+# See GPU usage:
+
+watch -n 1 nvidia-smi
+
+or
+
+nvtop
+
+# Whisper Models:
+Use at minimum the medium model. If possible, use the large model if you have enough GPU memory. 
+I suggest to use the largest model, it has the best results.
+(see https://github.com/openai/whisper)

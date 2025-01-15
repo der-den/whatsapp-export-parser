@@ -24,6 +24,13 @@ def print_system_info():
 
 def test_whisper_model(model_name="medium", test_file=None):
     print(f"\n=== Testing Whisper Model: {model_name} ===")
+
+    if model_name == "large":
+        # ask user to confirm large model
+        confirm = input("This model is large and may take a while to load (arround 3GB) or run out of gpu memory. Are you sure you want to continue? (y/n) ")
+        if confirm.lower() != "y":
+            print("Aborting.")
+            return
     
     # Load model and measure time
     start_time = time.time()
@@ -64,7 +71,7 @@ if __name__ == "__main__":
     test_file = sys.argv[1] if len(sys.argv) > 1 else None
     
     # Test different model sizes
-    for model_name in ["tiny", "base", "small", "medium"]:
+    for model_name in ["small", "medium", "large"]:
         try:
             test_whisper_model(model_name, test_file)
         except Exception as e:
