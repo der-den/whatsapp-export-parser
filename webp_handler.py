@@ -1,7 +1,8 @@
 """WebP file format handler"""
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from pathlib import Path
 from PIL import Image
+import os
 from utils import debug_print
 
 def check_webp_animation(file_path: str) -> Tuple[bool, Optional[Tuple[int, int]]]:
@@ -77,3 +78,39 @@ def is_valid_sticker(file_path: str) -> bool:
     except Exception as e:
         debug_print(f"Error checking sticker validity: {str(e)}", component="chat")
         return False
+
+def extract_sticker_frames(sticker_path: str, output_dir: str) -> List[str]:
+    """
+    Extract frames from a multiframe WebP sticker.
+    Only called for stickers that are already known to be multiframe.
+    
+    Args:
+        sticker_path: Path to the WebP sticker file
+        output_dir: Directory to save the frames
+        
+    Returns:
+        List of paths to the extracted frame files
+    """
+    frame_paths = []
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"Extracting frames from sticker {sticker_path} to {output_dir}")
+        with Image.open(sticker_path) as img:
+            frame_count = 0
+            while True:
+                try:
+                    # Save current frame
+                    frame_path = os.path.join(output_dir, f"frame_{frame_count}.png")
+                    img.save(frame_path, "PNG")
+                    frame_paths.append(frame_path)
+                    frame_count += 1
+                    
+                    # Move to next frame
+                    img.seek(img.tell() + 1)
+                except EOFError:
+                    break
+            print(f"Extracted {frame_count} frames from sticker {sticker_path}")
+        return frame_paths
+    except Exception as e:
+        debug_print(f"Error extracting frames from sticker {sticker_path}: {str(e)}", component="meta")
+        return []

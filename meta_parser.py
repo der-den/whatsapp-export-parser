@@ -18,6 +18,7 @@ from openpyxl import load_workbook
 from pptx import Presentation
 from models import ContentType, ChatMessage
 from utils import debug_print
+from webp_handler import check_webp_animation, is_valid_sticker, extract_sticker_frames
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 import whisper
@@ -118,10 +119,12 @@ class MetaParser:
         extract_dir_name = os.path.basename(self.zip_handler.extract_path)
         meta_dir = os.path.join(os.path.dirname(self.zip_handler.extract_path), f"{extract_dir_name}_meta")
         transcribe_dir = os.path.join(meta_dir, "transcribe")
+        stickerframes_dir = os.path.join(meta_dir, "stickerframes")
         
         # Create directories if they don't exist
         os.makedirs(meta_dir, exist_ok=True)
         os.makedirs(transcribe_dir, exist_ok=True)
+        os.makedirs(stickerframes_dir, exist_ok=True)
         
         debug_print(f"Creating meta directory: {meta_dir}", component="meta")
 
@@ -723,6 +726,22 @@ class MetaParser:
                 try:
                     metadata = self._get_sticker_metadata(message.attachment_file)
                     if metadata and "error" not in metadata:
+                        # If sticker is multiframe, extract frames
+                        if message.is_multiframe:
+                            sticker_path = os.path.join(self.zip_handler.extract_path, message.attachment_file)
+                            frames_dir = os.path.join(self._get_meta_directory(), "stickerframes", f"sticker_{metadata['attachment_number']}")
+                            os.makedirs(frames_dir, exist_ok=True)
+                            frame_paths = extract_sticker_frames(sticker_path, frames_dir)
+                            
+                            # Add frame info to metadata
+                            metadata["frames"] = {
+                                "count": len(frame_paths),
+                                "paths": [os.path.relpath(p, self._get_meta_directory()) for p in frame_paths]
+                            }
+                         # if frame count = 1, set is_multiframe to False
+                        if metadata["frames"]["count"] == 1:
+                            metadata["is_multiframe"] = False
+
                         message.content = json.dumps(metadata, ensure_ascii=False)
                         debug_print(f"Added metadata for sticker: {message.attachment_file}", component="meta")
                 except Exception as e:

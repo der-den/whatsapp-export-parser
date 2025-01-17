@@ -477,6 +477,13 @@ class PDFGenerator:
                             f"Attachment count: {metadata.get('attachment_number', 0)}"
                             
                         ]
+
+                        # if multiframe (metadata["is_multiframe"] = False)
+                        if metadata.get("is_multiframe", True):
+                            meta_text.append(f"Frames: Multiframe-Sticker with {metadata['frames']['count']} frames")
+                        else:
+                            meta_text.append(f"Frames: 1")
+
                         meta_para = Paragraph('<br/>'.join(meta_text), self.styles['Normal'])
                         
                         # Create table with sticker and metadata
@@ -722,17 +729,22 @@ class PDFGenerator:
         try:
             with PILImage.open(image_path) as img:
                 img_width, img_height = img.size
-                width_ratio = max_width / img_width
-                height_ratio = max_height / img_height
+                # Convert pixels to points (1/72 inch)
+                max_width_pts = max_width * 72 / 96  # 96 DPI is standard screen resolution
+                max_height_pts = max_height * 72 / 96
+                
+                width_ratio = max_width_pts / img_width
+                height_ratio = max_height_pts / img_height
                 scale_ratio = min(width_ratio, height_ratio)
                 
                 new_width = img_width * scale_ratio
                 new_height = img_height * scale_ratio
                 
+                debug_print(f"Scaling image {image_path}: {img_width}x{img_height}px -> {new_width:.0f}x{new_height:.0f}pts", component="pdf")
                 return new_width, new_height
         except Exception as e:
             print(f"Error scaling image {image_path}: {str(e)}", file=sys.stderr)
-            return max_width, max_height  
+            return max_width_pts, max_height_pts
 
     def generate_pdf(self, messages: List[ChatMessage], chat_members: set, statistics: Optional[ChatParser.ChatStatistics] = None) -> None:
         """
