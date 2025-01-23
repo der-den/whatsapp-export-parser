@@ -64,8 +64,9 @@ class PDFAttachmentGenerator:
             parent=self.styles['Heading1'],
             fontName=self.main_font,
             fontSize=16,
-            spaceAfter=20,
-            alignment=TA_CENTER
+            spaceAfter=5,
+            spaceBefore=0,
+            alignment=TA_LEFT
         ))
         
         # Attachment title style
@@ -73,8 +74,8 @@ class PDFAttachmentGenerator:
             name='AttachmentTitle',
             parent=self.styles['Heading1'],
             fontSize=14,
-            spaceAfter=15,
-            spaceBefore=15,
+            spaceAfter=10,
+            spaceBefore=0,
             alignment=TA_LEFT
         ))
         
@@ -200,7 +201,7 @@ class PDFAttachmentGenerator:
                 if chat_name.endswith('.zip'):
                     chat_name = chat_name[:-4]
                 elements.append(Paragraph(chat_name, self.styles['Header']))
-                elements.append(Spacer(1, 10))
+                elements.append(Spacer(1, 5))
             
             # Add attachment title
             title = f"Attachment {self.attachment_counter}"
@@ -208,8 +209,8 @@ class PDFAttachmentGenerator:
             
             # Add metadata BEFORE the image
             if metadata:
-                elements.append(Paragraph("Information:", self.styles['Heading2']))
-                elements.append(Spacer(1, 10))
+                #elements.append(Paragraph("Information:", self.styles['Heading2']))
+                elements.append(Spacer(1, 5))
                 for key, value in metadata.items():
                     if value:
                         elements.append(Paragraph(f"{key}: {value}", self.styles['AttachmentMetadata']))
