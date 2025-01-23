@@ -79,3 +79,14 @@ def format_size(size_bytes: int) -> str:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
     return f"{size_bytes:.1f} TB"
+
+# based on the log level, print the message to stdout or write it to a file
+def print_message(log_level: str, message: str) -> None:
+    if log_level == 'debug':
+        print(message)
+    elif log_level == 'info':
+        print(message)
+    elif log_level == 'warning':
+        print(message)
+    elif log_level == 'error':
+        print(message)

@@ -202,8 +202,9 @@ class MetaParser:
                 fp16=torch.cuda.is_available()  # Enable FP16 if CUDA is available
             )
             transcribe_time = time.time() - start_time
-            print(f"[Whisper] Transcription completed in {transcribe_time:.2f} seconds for {audio_file}")
-            
+            # print transcription information, but reset line feed to show next print on same line
+            print(f"#{self.attachment_counter} [Whisper] Transcription completed in {transcribe_time:.2f} seconds for {audio_file}", end="\r")
+
             if not transcribe_result or "text" not in transcribe_result:
                 debug_print(f"Warning: No transcription result for {audio_file}", component="meta")
                 result["error"] = "No transcription result"

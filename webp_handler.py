@@ -94,7 +94,7 @@ def extract_sticker_frames(sticker_path: str, output_dir: str) -> List[str]:
     frame_paths = []
     try:
         os.makedirs(output_dir, exist_ok=True)
-        print(f"Extracting frames from sticker {sticker_path} to {output_dir}")
+        debug_print(f"Extracting frames from sticker {sticker_path} to {output_dir}", component="meta")
         with Image.open(sticker_path) as img:
             frame_count = 0
             while True:
@@ -109,7 +109,7 @@ def extract_sticker_frames(sticker_path: str, output_dir: str) -> List[str]:
                     img.seek(img.tell() + 1)
                 except EOFError:
                     break
-            print(f"Extracted {frame_count} frames from sticker {sticker_path}")
+            debug_print(f"Extracted {frame_count} frames from sticker {sticker_path}", component="meta")
         return frame_paths
     except Exception as e:
         debug_print(f"Error extracting frames from sticker {sticker_path}: {str(e)}", component="meta")

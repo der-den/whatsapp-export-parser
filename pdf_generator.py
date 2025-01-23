@@ -355,12 +355,9 @@ class PDFGenerator:
                         if 'transcription' in metadata:
                             trans = metadata['transcription']
                             info_list.extend([
-                                "",  # Empty line for spacing
-                                "Transcription Information:",
-                                f"Language: {trans.get('language', 'unknown')}",
-                                f"Model: {trans.get('model', 'unknown')}",
+                                f"Transcription Information: Language: {trans.get('language', 'unknown')} Model: {trans.get('model', 'unknown')}",
+                                "Transcribed Text (Warning: KI generated transcription may be inaccurate):",
                                 "",  # Empty line before text
-                                "Transcribed Text (Warning: KI generated text may be inaccurate):",
                                 trans.get('text', 'No transcription available')
                             ])
                         

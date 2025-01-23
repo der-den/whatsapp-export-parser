@@ -216,10 +216,10 @@ class ZipHandler:
     def cleanup(self):
         """Clean up temporary files"""
         if self.extract_path:
-            self.show_statistics()  # Show stats before cleanup
             
             if os.path.exists(self.extract_path) and shutil.rmtree(self.extract_path):
                 print(f"Removed temporary directory: {self.extract_path}")
             else:
+                print(f"Failed to remove temporary directory: {self.extract_path}")
                 debug_print(f"Failed to remove temporary directory: {self.extract_path}", component="zip")
             self.extract_path = None

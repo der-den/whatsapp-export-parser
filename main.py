@@ -9,6 +9,7 @@ from pathlib import Path
 from zip_handler import ZipHandler
 from chat_parser import ChatParser
 from pdf_generator import PDFGenerator
+from pdf_att_gen import PDFAttachmentGenerator
 from meta_parser import MetaParser
 from languages import load_language, DEFAULT_LANGUAGE
 import utils
@@ -212,8 +213,17 @@ def main():
         pdf_generator.generate_pdf(messages, chat_parser.chat_members, stats)
         
         print(f"{app_lang.get('info', 'pdf_generated')}: {output_path}")
-        print(f"{app_lang.get('info', 'total_messages_processed')}: {len(messages)}")
-        print(f"{app_lang.get('info', 'chat_members')}: {', '.join(sorted(chat_parser.chat_members))}")
+        
+
+        # Generate individual PDFs for attachments if enabled in config
+        if config["output"].get("create_attachment_pdfs", False):
+            print(f"\n{app_lang.get('info', 'generating_attachment_pdfs')}")
+            output_dir = Path(output_path).parent / f"{Path(args.input).stem}_attachments"
+            att_generator = PDFAttachmentGenerator(str(output_dir), zip_handler.extract_path if zip_handler else None)
+            att_generator.process_messages(messages)
+        else:
+            print(f"\n{app_lang.get('info', 'no_attachment_pdfs')}")
+
         
         # Clean up extracted files if we used a ZIP
         zip_handler.cleanup()  # Show stats and cleanup files
