@@ -42,6 +42,7 @@ LANG_STRINGS = {
         'using_first_sender': 'No device owner specified, using first sender: {}',
         'processing_meta': 'Processing meta information',
         'pdf_generated': 'PDF generated: {}',
+        'generating_attachment_pdfs': 'Generating attachment PDFs...',
         'total_messages_processed': 'Total messages processed: {}',
         'chat_members': 'Chat members: {}'
     },

@@ -183,11 +183,11 @@ def main():
         preview_stats = meta_parser.process_messages(messages, ChatParser.URL_PATTERN)
         
         # Show preview statistics
-        print(f"\n{app_lang.get('statistics', 'preview_title')}:")
-        for content_type, count in preview_stats.items():
-            total = stats.messages_by_type[content_type]
+        #print(f"\n{app_lang.get('statistics', 'preview_title')}:")
+        #for content_type, count in preview_stats.items():
+        #    total = stats.messages_by_type[content_type]
             #success_rate = (count/total)*100 if total > 0 else 0
-            print(f"  {content_type.name}: {count}")
+        #    print(f"  {content_type.name}: {count}")
             
         # for test only, no pdf generation
         #return 0
@@ -219,7 +219,9 @@ def main():
         if config["output"].get("create_attachment_pdfs", False):
             print(f"\n{app_lang.get('info', 'generating_attachment_pdfs')}")
             output_dir = Path(output_path).parent / f"{Path(args.input).stem}_attachments"
-            att_generator = PDFAttachmentGenerator(str(output_dir), zip_handler.extract_path if zip_handler else None)
+            att_generator = PDFAttachmentGenerator(str(output_dir), 
+                                                 zip_handler.extract_path if zip_handler else None,
+                                                 input_filename=args.input)
             att_generator.process_messages(messages)
         else:
             print(f"\n{app_lang.get('info', 'no_attachment_pdfs')}")

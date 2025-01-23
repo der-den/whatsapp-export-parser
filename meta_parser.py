@@ -171,8 +171,8 @@ class MetaParser:
         
         # Check if transcription file already exists
         if os.path.exists(json_output):
-            print(f"Found existing transcription for {audio_file}")
-            debug_print(f"Loading existing transcription for {audio_file}", component="meta")
+            print(f"#{self.attachment_counter} [Whisper] Found existing transcription for {audio_file}", end="\r")      
+            debug_print(f"Loading existing transcription for #{self.attachment_counter} - {audio_file}", component="meta")
             with open(json_output, 'r', encoding='utf-8') as f:
                 existing_result = json.load(f)
                 if "transcription" in existing_result:

@@ -42,7 +42,10 @@ class LanguageStrings:
             if isinstance(current, dict) and key in current:
                 current = current[key]
             else:
-                return keys[0]
+                if exists(keys[1]):
+                    return keys[1]
+                else:
+                    return keys[0]
         
         return current if isinstance(current, str) else keys[0]
 
