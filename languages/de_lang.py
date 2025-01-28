@@ -12,8 +12,11 @@ LANG_STRINGS = {
         'audio': {
             'duration': 'Dauer',
             'size': 'Größe',
+            'language': 'Sprache',
+            'model': 'Modell',
             'transcription': 'Transkription',
-            'transcription_warning': 'Hinweis: Diese Transkription wurde von KI erstellt und ist möglicherweise nicht 100% genau.'
+            'transcription_warning': 'Hinweis: Diese Transkription wurde von KI erstellt und ist möglicherweise nicht 100% genau.',
+            'no_transcription': 'Keine Transkription verfügbar'
         },
         'attachments': {
             'image': 'Bildanhang',
@@ -21,6 +24,7 @@ LANG_STRINGS = {
             'audio': 'Audioanhang',
             'document': 'Dokumentanhang'
         },
+        'frames': 'Animationsframes',
         'statistics': {
             'title': 'Chat-Statistiken',
             'total_messages': 'Gesamtnachrichten',
@@ -41,9 +45,11 @@ LANG_STRINGS = {
     'info': {
         'using_first_sender': 'Kein Gerätebesitzer angegeben, verwende ersten Absender: {}',
         'processing_meta': 'Verarbeite Meta-Informationen',
-        'pdf_generated': 'PDF erstellt: {}',
+        'pdf_generated': 'PDF erstellt',
+        'generating_attachment_pdfs': 'Erstelle PDFs für Anhänge...',
         'total_messages_processed': 'Verarbeitete Nachrichten insgesamt: {}',
-        'chat_members': 'Chat-Teilnehmer: {}'
+        'chat_members': 'Chat-Teilnehmer: {}',
+        'attachment_pdf_progress': 'PDF für Anhang erstellt: {}'
     },
     'debug': {
         'enabled': 'Debug-Ausgabe aktiviert'
@@ -53,7 +59,8 @@ LANG_STRINGS = {
         'zip_error': 'ZIP-Fehler: {}',
         'general': 'Fehler: {}',
         'extraction_failed': 'Fehler beim Entpacken der ZIP-Datei: {}',
-        'no_chat_file': 'Keine Chat-Datei in der ZIP-Datei gefunden'
+        'no_chat_file': 'Keine Chat-Datei in der ZIP-Datei gefunden',
+        'audio_pdf': 'Fehler beim Erstellen des Audio-PDFs: {}'
     },
     'argparse': {
         'description': 'WhatsApp-Chat-Export in PDF konvertieren',

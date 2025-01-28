@@ -221,7 +221,8 @@ def main():
             output_dir = Path(output_path).parent / f"{Path(args.input).stem}_attachments"
             att_generator = PDFAttachmentGenerator(str(output_dir), 
                                                  zip_handler.extract_path if zip_handler else None,
-                                                 input_filename=args.input)
+                                                 input_filename=args.input,
+                                                 config=config)
             att_generator.process_messages(messages)
         else:
             print(f"\n{app_lang.get('info', 'no_attachment_pdfs')}")
