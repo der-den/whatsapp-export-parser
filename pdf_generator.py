@@ -735,7 +735,7 @@ class PDFGenerator:
             ('TEXTCOLOR', (0, warning_row), (0, -1), colors.gray),
             # Make the warning row bold and dark red
             ('FONTNAME', (0, warning_row-1), (-1, warning_row-1), 'Helvetica-Bold'),
-            ('TEXTCOLOR', (0, warning_row-1), (-1, warning_row-1), colors.darkred),
+            ('TEXTCOLOR', (0, warning_row-1), (-1, warning_row-1), colors.black),
         ]))
         
         elements.append(stat_table)
