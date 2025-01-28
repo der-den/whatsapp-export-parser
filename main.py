@@ -182,6 +182,10 @@ def main():
         meta_parser = MetaParser(zip_handler)
         preview_stats = meta_parser.process_messages(messages, ChatParser.URL_PATTERN)
         
+        # Pass transcription stats to chat statistics
+        if hasattr(meta_parser, 'transcription_stats'):
+            chat_parser.statistics.transcription_stats = meta_parser.transcription_stats
+        
         # Show preview statistics
         #print(f"\n{app_lang.get('statistics', 'preview_title')}:")
         #for content_type, count in preview_stats.items():

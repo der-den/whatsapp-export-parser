@@ -48,6 +48,7 @@ class ChatParser:
         missing_files: list = field(default_factory=list)  # List of missing attachment files
         content_types: Counter = field(default_factory=Counter)  # Zähler für alle ContentTypes
         preview_success: Counter = field(default_factory=Counter)  # Zähler für erfolgreiche Previews
+        transcription_stats: dict = field(default_factory=lambda: {"transcoded": 0, "loaded_existing": 0, "errors": 0})  # Audio transcription statistics
 
         def __post_init__(self):
             pass
@@ -508,6 +509,7 @@ class ChatParser:
                         try:
                             size = os.path.getsize(file_path)
                             self.statistics.attachment_sizes[content_type] += size
+                            self.statistics.content_types[content_type] += 1
                             debug_print(f"Attachment size: {size} bytes", component="chat")
                         except OSError:
                             debug_print(f"Error getting file size: {file_path}", component="chat")

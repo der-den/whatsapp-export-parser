@@ -179,8 +179,24 @@ class PDFGenerator:
         
         # Add header if specified
         if self.header_text:
-            canvas.drawString(doc.leftMargin, doc.pagesize[1] - doc.topMargin/2, 
-                            str(self.header_text))
+            # Get statistics from doc
+            statistics = getattr(doc, 'statistics', None)
+            header_text = self.header_text
+            
+            # Add attachment stats if available
+            if statistics and hasattr(statistics, 'content_types'):
+                stats_lines = []
+                total_size = sum(statistics.attachment_sizes.values()) if statistics.attachment_sizes else 0
+                stats_lines.append(f"Total Media Size: {format_size(total_size)}")
+                
+                if hasattr(statistics, 'transcription_stats'):
+                    transcoded = statistics.transcription_stats.get('transcoded', 0)
+                    loaded = statistics.transcription_stats.get('loaded_existing', 0)
+                    stats_lines.append(f"Audio Files - Transcoded: {transcoded}, Loaded from Cache: {loaded}")
+                
+                header_text = header_text + " | " + " | ".join(stats_lines)
+            
+            canvas.drawString(doc.leftMargin, doc.pagesize[1] - doc.topMargin/2, str(header_text))
         
         # Add footer if specified
         if self.footer_text:
@@ -685,6 +701,25 @@ class PDFGenerator:
             total_size = sum(statistics.attachment_sizes.values())
             stat_data.append(["Total Media Size:", format_size(total_size)])
             
+            # Add attachment statistics by type
+            if statistics.content_types:
+                for content_type, count in statistics.content_types.items():
+                    if content_type != ContentType.UNKNOWN:
+                        size = statistics.attachment_sizes.get(content_type, 0)
+                        stat_data.append([f"{content_type.name}:", f"{count} files ({format_size(size)})"])
+            
+            # Add transcoded audio stats if available
+            if hasattr(statistics, 'transcription_stats'):
+                transcoded = statistics.transcription_stats.get('transcoded', 0)
+                loaded = statistics.transcription_stats.get('loaded_existing', 0)
+                errors = statistics.transcription_stats.get('errors', 0)
+                if transcoded > 0 or loaded > 0:
+                    # do not show cached stats, only transcoded, and count chached to transcoded here
+                    transcoded_with_loaded = transcoded + loaded
+                    stat_data.append(["Audio Processing:", f"Transcoded: {transcoded_with_loaded}, Errors: {errors}"])
+                    stat_data.append([""])
+                    warning_row = len(stat_data)  # Get the index for the warning row
+                    stat_data.append(["Warning: KI generated transcription may be inaccurate !"])
         # Calculate available width
         available_width = A4[0] - 2*36  # Page width minus margins
         col_widths = [available_width * 0.3, available_width * 0.7]
@@ -695,7 +730,12 @@ class PDFGenerator:
             ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.gray),
+            # Apply gray color to all rows except warning row
+            ('TEXTCOLOR', (0, 0), (0, warning_row-2), colors.gray),
+            ('TEXTCOLOR', (0, warning_row), (0, -1), colors.gray),
+            # Make the warning row bold and dark red
+            ('FONTNAME', (0, warning_row-1), (-1, warning_row-1), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (0, warning_row-1), (-1, warning_row-1), colors.darkred),
         ]))
         
         elements.append(stat_table)
@@ -716,9 +756,10 @@ class PDFGenerator:
             for sender, count in statistics.messages_by_sender.most_common():
                 display_name = f"{sender} (Owner)" if sender == self.device_owner else sender
                 elements.append(Paragraph(f"{display_name}: {count}", sender_style))
-            
+            # append more space:
+            elements.append(Spacer(1, 10))
             elements.append(Spacer(1, 15))
-        
+
         return elements
 
     def _scale_image(self, image_path: str, max_width: float, max_height: float) -> tuple:
@@ -764,6 +805,9 @@ class PDFGenerator:
             bottomMargin=36
         )
 
+        # Store statistics in doc for header access
+        doc.statistics = statistics
+        
         elements = []
         
         # Add chat name as header
