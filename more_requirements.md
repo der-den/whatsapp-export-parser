@@ -49,6 +49,16 @@ fc-list | grep -i noto
 fc-list | grep -i dejavu
 ```
 
+### Installing Required Fonts on Linux
+
+```bash
+# Install DejaVu Sans and Liberation Sans
+sudo apt-get install fonts-dejavu fonts-liberation
+
+# Install Noto Color Emoji
+sudo apt-get install fonts-noto-color-emoji
+```
+
 ### After Font Installation
 
 After installing new fonts, you need to:
@@ -113,6 +123,86 @@ The generated PDFs will include:
 - Attachment indicators (📎)
 - Time stamps in either 24-hour (default) or 12-hour format
 
+## System Dependencies
+
+### Required for Video Processing
+- FFmpeg (for video frame extraction and metadata)
+```bash
+sudo apt-get install ffmpeg
+```
+
+### Required for Web Screenshots
+- Chrome/Chromium browser
+- ChromeDriver (matching your Chrome/Chromium version)
+```bash
+sudo apt-get install chromium-browser chromium-chromedriver
+```
+
+### Required for Audio Processing
+- CUDA Toolkit (optional, but recommended for faster audio transcription)
+- System audio codecs
+```bash
+sudo apt-get install ubuntu-restricted-extras
+```
+
+### Required for PDF Generation
+- System libraries for image processing
+```bash
+sudo apt-get install libjpeg-dev zlib1g-dev
+```
+
+## GPU Support (Optional)
+
+For faster audio transcription with Whisper, a CUDA-capable GPU is recommended. The system will automatically use GPU if available, otherwise fall back to CPU.
+
+### CUDA Setup (if using GPU)
+1. Install NVIDIA drivers
+2. Install CUDA Toolkit (matching your PyTorch version)
+3. Install cuDNN (matching your CUDA version)
+
+Refer to NVIDIA's official documentation for installation instructions specific to your system.
+
+## Memory Requirements
+
+- Minimum: 4GB RAM
+- Recommended: 8GB RAM
+- For large chats or when using Whisper: 16GB RAM
+- If using GPU: At least 4GB VRAM for Whisper
+
+## Storage Requirements
+
+- Base installation: ~2GB (including all dependencies)
+- Additional space needed for:
+  - Extracted chat archives
+  - Generated PDFs
+  - Temporary files during processing
+  - Whisper models (~5GB for large model)
+
+Recommend at least 10GB free space for comfortable operation.
+
+## Network Requirements
+
+- Internet connection required for:
+  - Initial package installation
+  - Downloading Whisper models (first run only)
+  - Taking web page screenshots (if processing URLs in chats)
+
+## Permissions
+
+The script needs permissions to:
+- Read input files
+- Write to output directory
+- Create temporary files
+- Access GPU devices (if using CUDA)
+- Access network (for web features)
+
+## Environment Variables (Optional)
+
+You can set these environment variables to customize behavior:
+- `WHISPER_MODEL`: Override default Whisper model
+- `CUDA_VISIBLE_DEVICES`: Control which GPU devices to use
+- `TEMP_DIR`: Override default temporary directory
+- `LOG_LEVEL`: Control debug output verbosity
 
 ## GPU / NIVDA support:
 Install may a litte dificult. Use at minimum the following commands:

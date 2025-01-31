@@ -1,6 +1,12 @@
-reportlab
+reportlab>=4.0.0
 Pillow>=10.0.0
-emoji
+emoji>=2.8.0
 mutagen>=1.47.0
 torch>=2.5.1
-openai-whisper
+openai-whisper>=20231117
+opencv-python>=4.8.0
+python-docx>=1.0.0
+openpyxl>=3.1.0
+python-pptx>=0.6.21
+selenium>=4.15.0
+vobject>=0.9.6.1

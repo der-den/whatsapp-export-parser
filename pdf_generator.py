@@ -372,7 +372,6 @@ class PDFGenerator:
                             trans = metadata['transcription']
                             info_list.extend([
                                 f"Transcription Information: Language: {trans.get('language', 'unknown')} Model: {trans.get('model', 'unknown')}",
-                                "Transcribed Text (Warning: KI generated transcription may be inaccurate):",
                                 "",  # Empty line before text
                                 trans.get('text', 'No transcription available')
                             ])

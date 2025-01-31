@@ -154,6 +154,10 @@ class PDFAttachmentGenerator:
             if any(attachment_path.lower().endswith(ext) for ext in ['.mp3', '.wav', '.ogg', '.m4a', '.opus']):
                 return self._create_audio_pdf(attachment_path, output_pdf, metadata)
                 
+            # Handle video files
+            if any(attachment_path.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.webm']):
+                return self._create_video_pdf(attachment_path, output_pdf, metadata)
+                
             return None
             
         except Exception as e:
@@ -419,4 +423,137 @@ class PDFAttachmentGenerator:
             
         except Exception as e:
             print(f"{self.lang.get('errors', 'audio_pdf')}: {str(e)}")
+            return None
+
+    def _create_video_pdf(self, video_path: str, output_pdf: str, metadata: Optional[Dict] = None) -> Optional[str]:
+        """Create a PDF for a video file, showing metadata and preview frames.
+        
+        Args:
+            video_path (str): Path to the video file
+            output_pdf (str): Path where to save the PDF
+            metadata (dict, optional): Additional metadata about the video
+            
+        Returns:
+            str: Path to the generated PDF file, or None if generation failed
+        """
+        try:
+            # Create PDF document
+            doc = SimpleDocTemplate(
+                output_pdf,
+                pagesize=A4,
+                rightMargin=72,
+                leftMargin=72,
+                topMargin=72,
+                bottomMargin=72
+            )
+            
+            elements = []
+            
+            # Add title
+            title = f"{self.lang.get('attachments', 'video_title')} {self.attachment_counter}"
+            elements.append(Paragraph(title, self.styles['AttachmentTitle']))
+            elements.append(Spacer(1, 10))
+            
+            # Extract video frames for preview
+            import cv2
+            cap = cv2.VideoCapture(video_path)
+            
+            # Get video properties
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            duration = frame_count / fps if fps > 0 else 0
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # Add video metadata
+            metadata_text = [
+                f"{self.lang.get('attachments', 'filename')}: {os.path.basename(video_path)}",
+                f"{self.lang.get('attachments', 'resolution')}: {width}x{height}",
+                f"{self.lang.get('attachments', 'duration')}: {int(duration//60)}:{int(duration%60):02d}",
+                f"{self.lang.get('attachments', 'fps')}: {fps:.2f}",
+                f"{self.lang.get('attachments', 'frame_count')}: {frame_count}",
+                f"{self.lang.get('attachments', 'file_size')}: {os.path.getsize(video_path)/1024/1024:.1f} MB"
+            ]
+            
+            if metadata:
+                metadata_text.extend([
+                    f"{self.lang.get('attachments', 'sender')}: {metadata.get('Sender', 'Unknown')}",
+                    f"{self.lang.get('attachments', 'timestamp')}: {metadata.get('Timestamp', 'Unknown')}"
+                ])
+            
+            for line in metadata_text:
+                elements.append(Paragraph(line, self.styles['AttachmentMetadata']))
+            
+            elements.append(Spacer(1, 20))
+            
+            # Extract preview frames (9 frames evenly distributed)
+            preview_frames = []
+            frame_count = min(frame_count, 9)  # Limit to 9 frames max
+            frame_interval = frame_count // 9
+            
+            for i in range(9):
+                frame_number = i * frame_interval
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                ret, frame = cap.read()
+                if ret:
+                    # Save frame as temporary image
+                    frame_path = os.path.join(self.output_dir, f"temp_frame_{i}.jpg")
+                    cv2.imwrite(frame_path, frame)
+                    preview_frames.append(frame_path)
+            
+            cap.release()
+            
+            # Add preview frames title
+            elements.append(Paragraph(self.lang.get('attachments', 'preview_frames'), self.styles['AttachmentMetadata']))
+            elements.append(Spacer(1, 10))
+            
+            # Create a table with preview frames in a 3x3 grid
+            if preview_frames:
+                # Calculate image dimensions to fit on page
+                available_width = A4[0] - 2*72  # Page width minus margins
+                image_width = available_width / 3  # 3 columns
+                image_height = image_width * (height/width)  # Maintain aspect ratio
+                
+                # Create table data with frames
+                table_data = []
+                current_row = []
+                
+                for i, frame_path in enumerate(preview_frames):
+                    img = Image(frame_path, width=image_width, height=image_height)
+                    current_row.append(img)
+                    
+                    if (i + 1) % 3 == 0:  # Every 3rd image
+                        table_data.append(current_row)
+                        current_row = []
+                
+                # Add any remaining images
+                if current_row:
+                    while len(current_row) < 3:  # Fill with empty cells
+                        current_row.append('')
+                    table_data.append(current_row)
+                
+                # Create and style the table
+                table = Table(table_data)
+                table.setStyle(TableStyle([
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ]))
+                
+                elements.append(table)
+                
+                # Clean up temporary frame files
+                for frame_path in preview_frames:
+                    try:
+                        os.remove(frame_path)
+                    except:
+                        pass
+            
+            # Build PDF
+            doc.build(elements, onFirstPage=self._create_header_footer, onLaterPages=self._create_header_footer)
+            return output_pdf
+            
+        except Exception as e:
+            print(f"{self.lang.get('errors', 'video_pdf')}: {str(e)}")
             return None
