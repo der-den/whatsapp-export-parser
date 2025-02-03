@@ -210,11 +210,11 @@ class PDFGenerator:
 
     def _escape_text(self, text: str) -> str:
         """Escape special characters in text for ReportLab paragraphs"""
-        return (text.replace('&', '&amp;')
-                   .replace('<', '&lt;')
-                   .replace('>', '&gt;')
-                   .replace('"', '&quot;')
-                   .replace("'", '&#39;'))
+        return (text.replace('&', '＆')  # Unicode U+FF06 (Fullwidth Ampersand)
+           .replace('<', '(')
+           .replace('>', ')')
+           .replace('"', '”')  # Unicode U+201D (Right Double Quotation Mark)
+           .replace("'", '’'))  # Unicode U+2019 (Right Single Quotation Mark) 
 
     def _format_text(self, text: str) -> str:
         """Format text with appropriate font tags for emojis"""
@@ -254,12 +254,14 @@ class PDFGenerator:
         
         # Split long messages into smaller chunks if needed
         content = ''.join(c for c in message.content if c.isprintable()).strip()
-        if len(content) > 1000:  # If message is very long
-            content = content[:997] + "..."  # Truncate with ellipsis
+        
+        #if len(content) > 1000:  # If message is very long
+        #    content = content[:997] + "..."  # Truncate with ellipsis
         
         # Format timestamp, sender and content
         timestamp_text = message.timestamp.strftime("%Y-%m-%d %H:%M")
         safe_sender = self._escape_text(message.sender)
+        #safe_sender = message.sender
         safe_content = message.content
         
         if message.is_attachment:
@@ -371,7 +373,7 @@ class PDFGenerator:
                         if 'transcription' in metadata:
                             trans = metadata['transcription']
                             info_list.extend([
-                                f"Transcription Information: Language: {trans.get('language', 'unknown')} Model: {trans.get('model', 'unknown')}",
+                                f"Transcription Language: {trans.get('language', 'unknown')}, Used model: {trans.get('model', 'unknown')}",
                                 "",  # Empty line before text
                                 trans.get('text', 'No transcription available')
                             ])
@@ -719,6 +721,9 @@ class PDFGenerator:
                     stat_data.append([""])
                     warning_row = len(stat_data)  # Get the index for the warning row
                     stat_data.append(["Warning: KI generated transcription may be inaccurate !"])
+                    # show details for translation model
+                    stat_data.append(["Translation Model:", f"Whisper-{self.config.get('audio', {}).get('whisper_model', 'unknown')}"])
+
         # Calculate available width
         available_width = A4[0] - 2*36  # Page width minus margins
         col_widths = [available_width * 0.3, available_width * 0.7]

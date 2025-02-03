@@ -390,6 +390,9 @@ class PDFAttachmentGenerator:
                 if 'timestamp' in metadata:
                     meta_list.append(f"{self.lang.get('pdf', 'header', 'timestamp')}: {metadata['timestamp']}")
                 
+                if 'sender' in metadata:
+                    meta_list.append(f"{self.lang.get('pdf', 'header', 'sender')}: {metadata['sender']}")
+                    
                 # Add metadata paragraphs
                 for meta_item in meta_list:
                     elements.append(Paragraph(meta_item, self.styles['AttachmentMetadata']))
