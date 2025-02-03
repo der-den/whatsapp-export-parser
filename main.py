@@ -233,7 +233,7 @@ def main():
 
         
         # Clean up extracted files if we used a ZIP
-        zip_handler.cleanup()  # Show stats and cleanup files
+        zip_handler.cleanup()  # remove extracted files
             
         if debug_enabled:
             utils.close_debug_file()  # Close debug file before exiting
