@@ -36,19 +36,17 @@ class LanguageStrings:
             *keys: Sequence of keys to access nested dictionary
             
         Returns:
-            str: Translated text or first key if translation not found
+            str: Translated text or concatenated keys with dots if translation not found
         """
         current = self._strings
         for key in keys:
             if isinstance(current, dict) and key in current:
                 current = current[key]
             else:
-                if exists(keys[1]):
-                    return keys[1]
-                else:
-                    return keys[0]
+                # Return keys joined with dots if not found
+                return '.'.join(keys)
         
-        return current if isinstance(current, str) else keys[0]
+        return current if isinstance(current, str) else '.'.join(keys)
 
 def load_language(lang_code: str) -> LanguageStrings:
     """

@@ -224,16 +224,18 @@ def main():
             print(f"\n{app_lang.get('info', 'generating_attachment_pdfs')}")
             output_dir = Path(output_path).parent / f"{Path(args.input).stem}_attachments"
             att_generator = PDFAttachmentGenerator(str(output_dir), 
-                                                 zip_handler.extract_path if zip_handler else None,
-                                                 input_filename=args.input,
-                                                 config=config)
+                                                 str(zip_handler.extract_path) if zip_handler else None, 
+                                                 args.input,
+                                                 config,
+                                                 zip_handler)
             att_generator.process_messages(messages)
         else:
             print(f"\n{app_lang.get('info', 'no_attachment_pdfs')}")
 
         
         # Clean up extracted files if we used a ZIP
-        zip_handler.cleanup()  # remove extracted files
+        if zip_handler:
+            zip_handler.cleanup()  # remove extracted files
             
         if debug_enabled:
             utils.close_debug_file()  # Close debug file before exiting

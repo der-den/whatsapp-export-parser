@@ -22,7 +22,7 @@ from webp_handler import check_webp_animation, extract_sticker_frames
 from languages import load_language, DEFAULT_LANGUAGE
 
 class PDFAttachmentGenerator:
-    def __init__(self, output_dir: str, unzip_dir: Optional[str] = None, input_filename: Optional[str] = None, config: Optional[Dict] = None):
+    def __init__(self, output_dir: str, unzip_dir: Optional[str] = None, input_filename: Optional[str] = None, config: Optional[Dict] = None, zip_handler=None):
         """Initialize the PDF attachment generator.
         
         Args:
@@ -30,10 +30,12 @@ class PDFAttachmentGenerator:
             unzip_dir (Optional[str]): Directory where attachments are extracted
             input_filename (Optional[str]): Name of the input chat file
             config (Optional[Dict]): Configuration dictionary including language settings
+            zip_handler: Optional ZipHandler instance for accessing extracted files
         """
         self.output_dir = output_dir
         self.unzip_dir = unzip_dir
         self.input_filename = input_filename
+        self.zip_handler = zip_handler
         self.attachment_counter = 0
         self.font_path = os.path.join(os.path.dirname(__file__), "fonts")
         self.main_font = "DejaVuSans"
@@ -111,8 +113,8 @@ class PDFAttachmentGenerator:
                 try:
                     metadata = json.loads(msg.content) if msg.content else {}
                     metadata.update({
-                        "Sender": msg.sender,
-                        "Timestamp": msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                        "sender": msg.sender,
+                        "timestamp": msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
                     })
                     
                     full_path = self._get_full_path(msg.attachment_file)
@@ -141,28 +143,116 @@ class PDFAttachmentGenerator:
             self.attachment_counter += 1
             output_pdf = os.path.join(self.output_dir, f"Attachment {self.attachment_counter}.pdf")
             
-            # Handle PDFs (just copy them)
-            if attachment_path.lower().endswith('.pdf'):
-                shutil.copy2(attachment_path, output_pdf)
+            # Create PDF document with header/footer
+            doc = SimpleDocTemplate(
+                output_pdf,
+                pagesize=A4,
+                rightMargin=72,
+                leftMargin=72,
+                topMargin=72,
+                bottomMargin=72
+            )
+            
+            elements = []
+            
+            # Add chat name header if input filename is available
+            if self.input_filename:
+                chat_name = Path(self.input_filename).stem
+                if chat_name.endswith('.zip'):
+                    chat_name = chat_name[:-4]
+                elements.append(Paragraph(chat_name, self.styles['Header']))
+                elements.append(Spacer(1, 5))
+            
+            # Add attachment title
+            title = f"Attachment #{self.attachment_counter}"
+            elements.append(Paragraph(title, self.styles['AttachmentTitle']))
+            elements.append(Spacer(1, 10))
+            
+            # Add common metadata
+            self._add_common_metadata(elements, attachment_path, metadata)
+            
+            # Setup file type handlers
+            file_type_handlers = {
+                'image': {
+                    'extensions': ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
+                    'handler': self._create_image_pdf
+                },
+                'audio': {
+                    'extensions': ['.mp3', '.wav', '.ogg', '.m4a', '.opus'],
+                    'handler': self._create_audio_pdf
+                },
+                'video': {
+                    'extensions': ['.mp4', '.mov', '.avi', '.webm'],
+                    'handler': self._create_video_pdf
+                }
+            }
+            
+            # Find handler for file type
+            file_extension = Path(attachment_path).suffix.lower()
+            content_elements = None
+            known_extension = False
+            
+            # Check each type handler
+            for type_info in file_type_handlers.values():
+                if file_extension in type_info['extensions']:
+                    known_extension = True
+                    content_elements = type_info['handler'](attachment_path, metadata)
+                    break
+            
+            # Handle unknown file type
+            if not known_extension:
+                elements.append(Paragraph(f"Unknown / Not supported file type: {file_extension}", self.styles['AttachmentMetadata']))
+            
+            if content_elements:
+                elements.extend(content_elements)
+                doc.build(elements, onFirstPage=self._create_header_footer, onLaterPages=self._create_header_footer)
                 return output_pdf
-            
-            # Handle images
-            if any(attachment_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                return self._create_image_pdf(attachment_path, output_pdf, metadata)
-            
-            # Handle audio files
-            if any(attachment_path.lower().endswith(ext) for ext in ['.mp3', '.wav', '.ogg', '.m4a', '.opus']):
-                return self._create_audio_pdf(attachment_path, output_pdf, metadata)
-                
-            # Handle video files
-            if any(attachment_path.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.webm']):
-                return self._create_video_pdf(attachment_path, output_pdf, metadata)
                 
             return None
             
         except Exception as e:
             print(f"Error generating PDF for {attachment_path}: {str(e)}")
             return None
+
+    def _add_common_metadata(self, elements: List, attachment_path: str, metadata: Optional[Dict] = None) -> None:
+        """Add common metadata elements that should appear in all attachment PDFs.
+        
+        Args:
+            elements: List of PDF elements to append to
+            attachment_path: Path to the attachment file
+            metadata: Optional metadata dictionary
+        """
+        if not metadata:
+            return
+            
+        size_bytes = metadata.get('size_bytes', 0)
+        if size_bytes < 1024:
+            size_bytes_formated = f"{size_bytes} B"
+        elif size_bytes < 1024*1024:
+            size_bytes_formated = f"{size_bytes/1024:.1f} KB"
+        else:
+            size_bytes_formated = f"{size_bytes/1024/1024:.1f} MB"
+
+        if 'filename' in metadata:
+            elements.append(Paragraph(f"{self.lang.get('pdf', 'header', 'filename')}: {metadata['filename']}", self.styles['AttachmentMetadata']))
+        elements.append(Paragraph(f"{self.lang.get('attachments', 'file_size')}: {size_bytes_formated}", self.styles['AttachmentMetadata']))
+        
+        if 'md5_hash' in metadata:
+            elements.append(Paragraph(f"MD5: {metadata['md5_hash']}", self.styles['AttachmentMetadata']))
+        
+        elements.append(Spacer(1, 10))
+        
+        # Sender und Timestamp können sowohl groß als auch klein geschrieben sein
+        sender = metadata.get('Sender') or metadata.get('sender')
+        timestamp = metadata.get('Timestamp') or metadata.get('timestamp')
+        
+        if sender:
+            elements.append(Paragraph(f"{self.lang.get('pdf', 'header', 'sender')}: {sender}", self.styles['AttachmentMetadata']))
+        
+        if timestamp:
+            elements.append(Paragraph(f"{self.lang.get('pdf', 'header', 'timestamp')}: {timestamp}", self.styles['AttachmentMetadata']))
+        
+        elements.append(Spacer(1, 10))
 
     def _create_header_footer(self, canvas, doc):
         """Add header and footer to each page"""
@@ -198,19 +288,28 @@ class PDFAttachmentGenerator:
         elements.append(Paragraph(f"Animation frames: {total_frames}", self.styles['AttachmentMetadata']))
         elements.append(Spacer(1, 10))
         
-        # Limit to 9 frames (3x3 grid)
-        frames_data = frames_data[:9]
+        # Select 9 evenly distributed frames
+        if total_frames <= 9:
+            selected_frames = frames_data[:9]  # Wenn weniger als 9 Frames, nimm alle
+        else:
+            # Berechne den Abstand zwischen den ausgewählten Frames
+            step = (total_frames - 1) / 8  # -1 weil wir bei 0 anfangen und den letzten Frame auch wollen
+            
+            # Wähle 9 Frames mit gleichmäßigem Abstand
+            indices = [int(i * step) for i in range(9)]
+            selected_frames = [frames_data[i] for i in indices]
+        
         grid_size = 3  # Fixed 3x3 grid
         
         # Create grid data
         grid_data = []
         row = []
-        for i, frame_path in enumerate(frames_data):
+        for i, frame_path in enumerate(selected_frames):
             # Add frame to grid
             row.append(Image(frame_path, width=100, height=100))
             
             # Start new row if needed
-            if (i + 1) % grid_size == 0:
+            if (i + 1) % grid_size == 0:  # Every 3rd image
                 grid_data.append(row)
                 row = []
         
@@ -240,32 +339,18 @@ class PDFAttachmentGenerator:
         
         return elements
 
-    def _create_image_pdf(self, image_path: str, output_pdf: str, metadata: Optional[Dict] = None) -> Optional[str]:
+    def _create_image_pdf(self, image_path: str, metadata: Optional[Dict] = None) -> Optional[List]:
+        """Create elements for an image file, showing metadata and the image itself.
+        
+        Args:
+            image_path: Path to the image file
+            metadata: Optional metadata about the image
+            
+        Returns:
+            List of elements to add to the PDF, or None if creation failed
+        """
         try:
-            # Create PDF document with header/footer
-            doc = SimpleDocTemplate(
-                output_pdf,
-                pagesize=A4,
-                rightMargin=72,
-                leftMargin=72,
-                topMargin=72,
-                bottomMargin=72
-            )
-            
             elements = []
-            
-            # Add chat name header if input filename is available
-            if self.input_filename:
-                chat_name = Path(self.input_filename).stem
-                if chat_name.endswith('.zip'):
-                    chat_name = chat_name[:-4]
-                elements.append(Paragraph(chat_name, self.styles['Header']))
-                elements.append(Spacer(1, 5))
-            
-            # Add attachment title
-            title = f"{self.lang.get('pdf', 'attachments', 'image')} {self.attachment_counter}"
-            elements.append(Paragraph(title, self.styles['AttachmentTitle']))
-            elements.append(Spacer(1, 10))
             
             # Process image to check for frames
             img = PILImage.open(image_path)
@@ -288,13 +373,20 @@ class PDFAttachmentGenerator:
                 except Exception as e:
                     print(f"Error checking WebP frames: {str(e)}")
             
-            # Add metadata BEFORE content
+            # Add image-specific metadata
             if metadata:
-                for key, value in metadata.items():
-                    # Skip frames data and size for WebPs with frames
-                    if key != 'frames' and value and not (has_frames and key == 'size_bytes'):
-                        elements.append(Paragraph(f"{key}: {value}", self.styles['AttachmentMetadata']))
-                elements.append(Spacer(1, 20))
+                image_meta = []
+                if 'width' in metadata and 'height' in metadata:
+                    image_meta.append(f"{self.lang.get('attachments', 'dimensions')}: {metadata['width']}x{metadata['height']} px")
+                if 'format' in metadata:
+                    image_meta.append(f"{self.lang.get('attachments', 'format')}: {metadata['format']}")
+                if 'mode' in metadata:
+                    image_meta.append(f"{self.lang.get('attachments', 'color_mode')}: {metadata['mode']}")
+                
+                if image_meta:
+                    for meta in image_meta:
+                        elements.append(Paragraph(meta, self.styles['AttachmentMetadata']))
+                    elements.append(Spacer(1, 10))
             
             # Add content (either frames or main image)
             if has_frames:
@@ -330,233 +422,146 @@ class PDFAttachmentGenerator:
                 # Add image centered
                 elements.append(Image(image_path, width=img_w, height=img_h))
             
-            # Build PDF with header/footer
-            doc.build(elements, onFirstPage=self._create_header_footer, onLaterPages=self._create_header_footer)
-            return output_pdf
+            return elements
             
         except Exception as e:
-            print(f"Error creating PDF for image {image_path}: {str(e)}")
+            print(f"Error while adding data to PDF for image {image_path}: {str(e)}")
             return None
 
-    def _create_audio_pdf(self, audio_path: str, output_pdf: str, metadata: Optional[Dict] = None) -> Optional[str]:
-        """Create a PDF for an audio file, showing metadata and an audio icon."""
-        try:
-            # Create PDF document with header/footer
-            doc = SimpleDocTemplate(
-                output_pdf,
-                pagesize=A4,
-                rightMargin=72,
-                leftMargin=72,
-                topMargin=72,
-                bottomMargin=72
-            )
+    def _create_audio_pdf(self, audio_path: str, metadata: Optional[Dict] = None) -> Optional[List]:
+        """Create elements for an audio file, showing metadata and an audio icon.
+        
+        Args:
+            audio_path: Path to the audio file
+            metadata: Optional metadata about the audio file
             
+        Returns:
+            List of elements to add to the PDF, or None if creation failed
+        """
+        try:
             elements = []
             
-            # Add chat name header if input filename is available
-            if self.input_filename:
-                chat_name = Path(self.input_filename).stem
-                if chat_name.endswith('.zip'):
-                    chat_name = chat_name[:-4]
-                elements.append(Paragraph(chat_name, self.styles['Header']))
-                elements.append(Spacer(1, 5))
             
-            # Add attachment title
-            title = f"{self.lang.get('pdf', 'attachments', 'audio')} {self.attachment_counter}"
-            elements.append(Paragraph(title, self.styles['AttachmentTitle']))
-            elements.append(Spacer(1, 10))
-            
-            # Add metadata
+            # Add audio-specific metadata
             if metadata:
-                meta_list = []
-                
-                # Basic metadata
                 if 'duration_seconds' in metadata:
-                    duration = float(metadata['duration_seconds'])
+                    duration = metadata['duration_seconds']
                     minutes = int(duration // 60)
                     seconds = int(duration % 60)
-                    meta_list.append(f"{self.lang.get('pdf', 'audio', 'duration')}: {minutes}:{seconds:02d}")
-                
-                if 'size_bytes' in metadata:
-                    size_mb = float(metadata['size_bytes']) / (1024 * 1024)
-                    meta_list.append(f"{self.lang.get('pdf', 'audio', 'size')}: {size_mb:.1f} MB")
-                
-                if 'md5_hash' in metadata:
-                    meta_list.append(f"MD5: {metadata['md5_hash']}")
-                
-                if 'filename' in metadata:
-                    meta_list.append(f"{self.lang.get('pdf', 'header', 'filename')}: {metadata['filename']}")
-                
-                if 'timestamp' in metadata:
-                    meta_list.append(f"{self.lang.get('pdf', 'header', 'timestamp')}: {metadata['timestamp']}")
-                
-                if 'sender' in metadata:
-                    meta_list.append(f"{self.lang.get('pdf', 'header', 'sender')}: {metadata['sender']}")
-                    
-                # Add metadata paragraphs
-                for meta_item in meta_list:
-                    elements.append(Paragraph(meta_item, self.styles['AttachmentMetadata']))
-                elements.append(Spacer(1, 20))
+                    elements.append(Paragraph(f"{self.lang.get('pdf', 'audio', 'duration')}: {minutes}:{seconds:02d}", self.styles['AttachmentMetadata']))
                 
                 # Add transcription if available
                 if 'transcription' in metadata:
                     trans = metadata['transcription']
-                    
-                    # Add transcription metadata
-                    elements.append(Paragraph(self.lang.get('pdf', 'audio', 'transcription'), self.styles['AttachmentTitle']))
-                    elements.append(Spacer(1, 5))
-                    
-                    if 'language' in trans:
-                        elements.append(Paragraph(f"{self.lang.get('pdf', 'audio', 'language')}: {trans['language']}", self.styles['AttachmentMetadata']))
-                    if 'model' in trans:
-                        elements.append(Paragraph(f"{self.lang.get('pdf', 'audio', 'model')}: {trans['model']}", self.styles['AttachmentMetadata']))
-                    
-                    elements.append(Spacer(1, 10))
-                    elements.append(Paragraph(self.lang.get('pdf', 'audio', 'transcription_warning'), self.styles['AttachmentMetadata']))
-                    elements.append(Spacer(1, 5))
+                    elements.append(Paragraph(f"{self.lang.get('pdf', 'audio', 'transcription')}:", self.styles['AttachmentMetadata']))
                     
                     if 'text' in trans:
                         elements.append(Paragraph(trans['text'], self.styles['Normal']))
                     else:
                         elements.append(Paragraph(self.lang.get('pdf', 'audio', 'no_transcription'), self.styles['AttachmentMetadata']))
             
-            # Build PDF with header/footer
-            doc.build(elements, onFirstPage=self._create_header_footer, onLaterPages=self._create_header_footer)
-            return output_pdf
+            return elements
             
         except Exception as e:
             print(f"{self.lang.get('errors', 'audio_pdf')}: {str(e)}")
             return None
 
-    def _create_video_pdf(self, video_path: str, output_pdf: str, metadata: Optional[Dict] = None) -> Optional[str]:
-        """Create a PDF for a video file, showing metadata and preview frames.
+    def _create_video_pdf(self, video_path: str, metadata: Optional[Dict] = None) -> Optional[List]:
+        """Create elements for a video file, showing metadata and preview frames.
         
         Args:
-            video_path (str): Path to the video file
-            output_pdf (str): Path where to save the PDF
-            metadata (dict, optional): Additional metadata about the video
+            video_path: Path to the video file
+            metadata: Optional metadata about the video
             
         Returns:
-            str: Path to the generated PDF file, or None if generation failed
+            List of elements to add to the PDF, or None if creation failed
         """
         try:
-            # Create PDF document
-            doc = SimpleDocTemplate(
-                output_pdf,
-                pagesize=A4,
-                rightMargin=72,
-                leftMargin=72,
-                topMargin=72,
-                bottomMargin=72
-            )
-            
             elements = []
             
-            # Add title
-            title = f"{self.lang.get('attachments', 'video_title')} {self.attachment_counter}"
-            elements.append(Paragraph(title, self.styles['AttachmentTitle']))
-            elements.append(Spacer(1, 10))
-            
-            # Extract video frames for preview
-            import cv2
-            cap = cv2.VideoCapture(video_path)
-            
-            # Get video properties
-            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            duration = frame_count / fps if fps > 0 else 0
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            
             # Add video metadata
-            metadata_text = [
-                f"{self.lang.get('attachments', 'filename')}: {os.path.basename(video_path)}",
-                f"{self.lang.get('attachments', 'resolution')}: {width}x{height}",
-                f"{self.lang.get('attachments', 'duration')}: {int(duration//60)}:{int(duration%60):02d}",
-                f"{self.lang.get('attachments', 'fps')}: {fps:.2f}",
-                f"{self.lang.get('attachments', 'frame_count')}: {frame_count}",
-                f"{self.lang.get('attachments', 'file_size')}: {os.path.getsize(video_path)/1024/1024:.1f} MB"
-            ]
-            
             if metadata:
-                metadata_text.extend([
-                    f"{self.lang.get('attachments', 'sender')}: {metadata.get('Sender', 'Unknown')}",
-                    f"{self.lang.get('attachments', 'timestamp')}: {metadata.get('Timestamp', 'Unknown')}"
-                ])
-            
-            for line in metadata_text:
-                elements.append(Paragraph(line, self.styles['AttachmentMetadata']))
-            
-            elements.append(Spacer(1, 20))
-            
-            # Extract preview frames (9 frames evenly distributed)
-            preview_frames = []
-            frame_count = min(frame_count, 9)  # Limit to 9 frames max
-            frame_interval = frame_count // 9
-            
-            for i in range(9):
-                frame_number = i * frame_interval
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-                ret, frame = cap.read()
-                if ret:
-                    # Save frame as temporary image
-                    frame_path = os.path.join(self.output_dir, f"temp_frame_{i}.jpg")
-                    cv2.imwrite(frame_path, frame)
-                    preview_frames.append(frame_path)
-            
-            cap.release()
-            
-            # Add preview frames title
-            elements.append(Paragraph(self.lang.get('attachments', 'preview_frames'), self.styles['AttachmentMetadata']))
-            elements.append(Spacer(1, 10))
-            
-            # Create a table with preview frames in a 3x3 grid
-            if preview_frames:
-                # Calculate image dimensions to fit on page
-                available_width = A4[0] - 2*72  # Page width minus margins
-                image_width = available_width / 3  # 3 columns
-                image_height = image_width * (height/width)  # Maintain aspect ratio
+                if 'width' in metadata and 'height' in metadata:
+                    elements.append(Paragraph(f"{self.lang.get('attachments', 'dimensions')}: {metadata['width']}x{metadata['height']} px", self.styles['AttachmentMetadata']))
+                if 'duration_seconds' in metadata:
+                    duration = metadata['duration_seconds']
+                    minutes = int(duration // 60)
+                    seconds = int(duration % 60)
+                    elements.append(Paragraph(f"{self.lang.get('attachments', 'duration')}: {minutes}:{seconds:02d}", self.styles['AttachmentMetadata']))
+                if 'fps' in metadata:
+                    elements.append(Paragraph(f"{self.lang.get('attachments', 'fps')}: {metadata['fps']:.1f}", self.styles['AttachmentMetadata']))
+                if 'frame_count' in metadata:
+                    elements.append(Paragraph(f"{self.lang.get('attachments', 'frame_count')}: {metadata['frame_count']}", self.styles['AttachmentMetadata']))
                 
-                # Create table data with frames
-                table_data = []
-                current_row = []
-                
-                for i, frame_path in enumerate(preview_frames):
-                    img = Image(frame_path, width=image_width, height=image_height)
-                    current_row.append(img)
+                elements.append(Spacer(1, 10))
+            
+                # Add preview frames if available
+                if 'preview' in metadata:
+                    # Der meta_path ist relativ zum meta_dir
+                    meta_dir = os.path.join(os.path.dirname(self.zip_handler.extract_path), os.path.basename(self.zip_handler.extract_path) + "_meta")
+                    preview_path = os.path.join(meta_dir, metadata['preview']['meta_path'])
                     
-                    if (i + 1) % 3 == 0:  # Every 3rd image
-                        table_data.append(current_row)
-                        current_row = []
-                
-                # Add any remaining images
-                if current_row:
-                    while len(current_row) < 3:  # Fill with empty cells
-                        current_row.append('')
-                    table_data.append(current_row)
-                
-                # Create and style the table
-                table = Table(table_data)
-                table.setStyle(TableStyle([
-                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 5),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-                ]))
-                
-                elements.append(table)
-                
-                # Clean up temporary frame files
-                for frame_path in preview_frames:
-                    try:
-                        os.remove(frame_path)
-                    except:
-                        pass
+                    if os.path.exists(preview_path):
+                        elements.append(Paragraph(self.lang.get('pdf', 'frames'), self.styles['AttachmentMetadata']))
+                        elements.append(Spacer(1, 5))
+                        
+                        # Maximale Breite und Höhe für das Bild
+                        max_width = A4[0] - 2*72  # Seitenbreite minus Ränder
+                        max_height = A4[1] - 4*72  # Seitenhöhe minus Ränder und Platz für Text
+                        
+                        # Öffne das Bild und hole die Originaldimensionen
+                        img = PILImage.open(preview_path)
+                        img_w, img_h = img.size
+                        img.close()
+                        
+                        # Berechne das Seitenverhältnis
+                        aspect = img_w / float(img_h)
+                        
+                        # Skaliere das Bild proportional
+                        if max_width / aspect <= max_height:
+                            # Breite ist der limitierende Faktor
+                            scaled_width = max_width
+                            scaled_height = max_width / aspect
+                        else:
+                            # Höhe ist der limitierende Faktor
+                            scaled_height = max_height
+                            scaled_width = max_height * aspect
+                        
+                        elements.append(Image(preview_path, width=scaled_width, height=scaled_height))
             
-            # Build PDF
-            doc.build(elements, onFirstPage=self._create_header_footer, onLaterPages=self._create_header_footer)
-            return output_pdf
+            return elements
             
         except Exception as e:
             print(f"{self.lang.get('errors', 'video_pdf')}: {str(e)}")
             return None
+
+    def process_messages(self, messages: List[ChatMessage]) -> int:
+        """Process all messages and generate PDFs for attachments.
+        
+        Args:
+            messages (list): List of chat messages to process
+            
+        Returns:
+            int: Number of PDFs generated
+        """
+        pdfs_generated = 0
+        for msg in messages:
+            if msg.is_attachment and msg.exists_in_export and msg.attachment_file:
+                try:
+                    metadata = json.loads(msg.content) if msg.content else {}
+                    metadata.update({
+                        "sender": msg.sender,
+                        "timestamp": msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                    
+                    full_path = self._get_full_path(msg.attachment_file)
+                    if os.path.exists(full_path):
+                        pdf_path = self.generate_pdf_for_attachment(full_path, metadata)
+                        if pdf_path:
+                            print(self.lang.get('info', 'attachment_pdf_progress').format(os.path.basename(pdf_path)), end="\r")
+                            pdfs_generated += 1
+                except Exception as e:
+                    print(f"{self.lang.get('errors', 'general').format(str(e))}")
+                    continue
+                    
+        return pdfs_generated

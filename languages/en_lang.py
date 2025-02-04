@@ -7,7 +7,8 @@ LANG_STRINGS = {
         'header': {
             'timestamp': 'Created on',
             'filename': 'File',
-            'device_owner': 'Device Owner'
+            'device_owner': 'Device Owner',
+            'sender': 'Sender'
         },
         'audio': {
             'duration': 'Duration',
@@ -31,6 +32,17 @@ LANG_STRINGS = {
             'participants': 'Participants',
             'date_range': 'Date Range'
         }
+    },
+    'attachments': {
+        'file_size': 'Size',
+        'dimensions': 'Dimensions',
+        'format': 'Format',
+        'color_mode': 'Color Mode',
+        'duration': 'Duration',
+        'bitrate': 'Bitrate',
+        'channels': 'Channels',
+        'sample_rate': 'Sample Rate',
+        'codec': 'Codec'
     },
     'statistics': {
         'title': 'Chat Statistics',
