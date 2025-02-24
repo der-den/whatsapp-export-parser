@@ -1,13 +1,48 @@
-This Python script take your WhatsApp Export ZIP file, parse the included text file and build a PDF report.
+# WhatsApp Export Parser
 
-- At time the script building one PDF for the chat and for each attachment a extra pdf.
-- At time the script is optimized for german exports! A basic language support is started but not full implemented.  
+This Python script takes your WhatsApp Export ZIP file, parses the included text file, and builds a PDF report.
 
-Embedding attachments in the report:
-All attachments comes with informations for name, size, duration, sender, md5, attachment number 
+## Features
 
-- pictures are resized and added
-- take video frames and add 4 frames to the report
-- audio files can optionaly passed to whisper and direct transcoded to text
-- stickers are included with one image to the pdf, in the attachment pdf are up to 9 frames for multi-frame stickers
--  
+- Generates a main PDF for the chat and separate PDFs for each attachment
+- Optimized for German exports (basic language support for other languages is in progress)
+- Processes various types of attachments:
+  - Images: Resized and embedded in the report
+  - Videos: Extracts and adds 4 frames to the report
+  - Audio: Optional transcription using Whisper AI
+  - Stickers: Embedded as images (up to 9 frames for multi-frame stickers in attachment PDFs)
+
+## Requirements
+
+- Python 3.10.x
+- Virtual environment (recommended)
+
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/der-den/whatsapp-export-parser.git
+   cd whatsapp-export-parser
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python3.10 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Dependencies
+
+Key packages:
+- reportlab: PDF generation
+- Pillow: Image processing
+- torch & openai-whisper: Audio transcription
+- opencv-python: Video frame extraction
+- Other utilities: emoji, mutagen, vobject
+
+All dependencies are specified in `requirements.txt` with their respective versions.
