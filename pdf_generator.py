@@ -43,7 +43,7 @@ class PDFGenerator:
         # Register fonts
         pdfmetrics.registerFont(TTFont(self.main_font, os.path.join(self.font_path, "DejaVuSans.ttf")))
         pdfmetrics.registerFont(TTFont(self.emoji_font, os.path.join(self.font_path, "Symbola.ttf")))
-        
+
         # Create a font mapping that uses both fonts
         pdf_fonts = {
             'normal': self.main_font,
@@ -708,6 +708,9 @@ class PDFGenerator:
                     if content_type != ContentType.UNKNOWN:
                         size = statistics.attachment_sizes.get(content_type, 0)
                         stat_data.append([f"{content_type.name}:", f"{count} files ({format_size(size)})"])
+            
+            # Initialize warning_row with default value
+            warning_row = 0
             
             # Add transcoded audio stats if available
             if hasattr(statistics, 'transcription_stats'):

@@ -1,7 +1,7 @@
 # Python version requirement
 python_version == "3.10.*"
 
-# Package requirements
+# Core dependencies
 reportlab>=4.0.0
 Pillow>=10.0.0
 emoji>=2.8.0
@@ -10,3 +10,17 @@ torch==2.0.1
 openai-whisper==20231117
 opencv-python>=4.8.0
 vobject>=0.9.6.1
+beautifulsoup4>=4.12.0
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+openpyxl>=3.1.0
+python-pptx>=0.6.21
+numpy==1.24.3
+
+# Additional dependencies identified
+bs4>=0.0.1  # BeautifulSoup alias
+pathlib>=1.0.1
+typing>=3.7.4.3
+dataclasses>=0.8  # For Python < 3.7, built-in for 3.7+
+# The following are typically built-in modules
+# datetime, collections, re, json, os, sys, warnings, hashlib, shutil, time, subprocess, mimetypes, tempfile, unicodedata
