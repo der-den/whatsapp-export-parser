@@ -369,32 +369,108 @@ class PDFGenerator:
                             f"Attachment count: {metadata.get('attachment_number', 0)}"
                         ]
                         
-                        # Add transcription if available
+                        # Add only transcription metadata info, not the text itself (which will be handled separately)
+                        #if 'transcription' in metadata:
+                        #    trans = metadata['transcription']
+                        #    info_list.extend([
+                        #        f"Transcription Language: {trans.get('language', 'unknown')}, Used model: {trans.get('model', 'unknown')}"
+                        #        # Don't include the transcription text here - it will be handled separately
+                        #    ])
+                        
+                        # Handle metadata and short parts separately from the transcription text
+                        # First create a list of metadata without the transcription text
+                        meta_info = info_list.copy()
+                        transcription_text = None
+                        
+                        # If we have transcription, handle it separately
                         if 'transcription' in metadata:
                             trans = metadata['transcription']
-                            info_list.extend([
-                                f"Transcription Language: {trans.get('language', 'unknown')}, Used model: {trans.get('model', 'unknown')}",
-                                "",  # Empty line before text
-                                trans.get('text', 'No transcription available')
-                            ])
+                            # Add the language and model info to metadata
+                            if len(meta_info) >= 5:  # Make sure the original list has the expected items
+                                meta_info.extend([
+                                    f"Transcription Language: {trans.get('language', 'unknown')}, Used model: {trans.get('model', 'unknown')}"
+                                ])
+                            # Store the transcription text separately
+                            transcription_text = trans.get('text', 'No transcription available')
                         
-                        # Create a table for the metadata (without heading)
-                        table_data = [[Paragraph('<br/>'.join(info_list), self.styles['Normal'])]]
+                        # Create a table for just the metadata info
+                        if meta_info:
+                            table_data = [[Paragraph('<br/>'.join(meta_info), self.styles['Normal'])]]
+                            
+                            table = Table(
+                                table_data,
+                                colWidths=[A4[0] - 72],  # Full width minus margins
+                                style=TableStyle([
+                                    ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                                    ('TOPPADDING', (0,0), (-1,-1), 8),
+                                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                                ])
+                            )
+                            elements.append(Spacer(1, 10))
+                            elements.append(table)
                         
-                        table = Table(
-                            table_data,
-                            colWidths=[A4[0] - 72],  # Full width minus margins
-                            style=TableStyle([
-                                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                                ('LEFTPADDING', (0,0), (-1,-1), 6),
-                                ('RIGHTPADDING', (0,0), (-1,-1), 6),
-                                ('TOPPADDING', (0,0), (-1,-1), 8),
-                                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-                            ])
-                        )
-                        elements.append(Spacer(1, 10))
-                        elements.append(table)
+                        # Add the transcription text as a separate paragraph (not in a table)
+                        # This allows it to flow naturally across pages
+                        if transcription_text:
+                            elements.append(Spacer(1, 10))
+                            
+                            # Create a heading for the transcription
+                            heading = Paragraph('Transcription:', self.styles['Heading4'])
+                            elements.append(heading)
+                            
+                            # Create a paragraph style with more spacing for readability
+                            transcription_style = ParagraphStyle(
+                                'Transcription',
+                                parent=self.styles['Normal'],
+                                fontSize=9,
+                                leading=11,
+                                leftIndent=12,
+                                rightIndent=12,
+                                spaceBefore=6,
+                                spaceAfter=6
+                            )
+                            
+                            # Split long transcriptions into chunks to avoid memory issues
+                            # and improve pagination
+                            max_chunk_length = 5000  # Characters per chunk
+                            
+                            # If text is very long, split it into chunks
+                            if len(transcription_text) > max_chunk_length:
+                                # Try to split at sentence boundaries when possible
+                                chunks = []
+                                remaining_text = transcription_text
+                                
+                                while remaining_text:
+                                    if len(remaining_text) <= max_chunk_length:
+                                        chunks.append(remaining_text)
+                                        break
+                                    
+                                    # Try to find a sentence end within the last 20% of max length
+                                    split_point = max_chunk_length
+                                    search_start = int(max_chunk_length * 0.8)
+                                    
+                                    # Look for a sentence end (. or ! or ?)
+                                    for end_char in ['. ', '! ', '? ']:
+                                        pos = remaining_text.rfind(end_char, search_start, max_chunk_length)
+                                        if pos > 0:
+                                            split_point = pos + 2  # Include the punctuation and space
+                                            break
+                                    
+                                    chunks.append(remaining_text[:split_point])
+                                    remaining_text = remaining_text[split_point:]
+                                
+                                # Add each chunk as a separate paragraph
+                                for chunk in chunks:
+                                    chunk_paragraph = Paragraph(self._escape_text(chunk), transcription_style)
+                                    elements.append(chunk_paragraph)
+                            else:
+                                # For shorter texts, just add as a single paragraph
+                                paragraph = Paragraph(self._escape_text(transcription_text), transcription_style)
+                                elements.append(paragraph)
+                        
                         elements.append(Spacer(1, 15))
                     except Exception as e:
                         print(f"Error processing audio metadata: {str(e)}", file=sys.stderr)
